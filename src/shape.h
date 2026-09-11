@@ -12,6 +12,7 @@ class Shape{
    Texture* normalMap;
    virtual double getIntersection(Ray ray) = 0;
    virtual bool getLightIntersection(Ray ray, double* fill) = 0;
+   virtual bool getBounds(Vector& lo, Vector& hi) { return false; }
    virtual void move() = 0;
    virtual unsigned char reversible() = 0;
    virtual void getColor(unsigned char* toFill, double* am, double* op, double* ref, Autonoma* r, Ray ray, unsigned int depth) = 0;

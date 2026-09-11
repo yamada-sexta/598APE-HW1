@@ -2,7 +2,8 @@
 #include "light.h"
 #include "shape.h"
 #include "camera.h"
-      
+#include "bvh.h"
+
 Light::Light(const Vector & cente, unsigned char* colo) : center(cente){
    color = colo;
 }
@@ -20,6 +21,7 @@ Autonoma::Autonoma(const Camera& c): camera(c){
    listEnd = NULL;
    lightStart = NULL;
    lightEnd = NULL;
+   bvh = NULL;
    depth = 10;
    skybox = BLACK;
 }
@@ -29,6 +31,7 @@ Autonoma::Autonoma(const Camera& c, Texture* tex): camera(c){
    listEnd = NULL;
    lightStart = NULL;
    lightEnd = NULL;
+   bvh = NULL;
    depth = 10;
    skybox = tex;
 }
@@ -105,6 +108,18 @@ void Autonoma::removeLight(LightNode* s){
    free(s);
 }
 
+void Autonoma::rebuild(){
+   linShapes.clear();
+   std::vector<Shape*> tris;
+   Vector a(0,0,0), b(0,0,0);
+   for(ShapeNode* n=listStart; n!=NULL; n=n->next){
+      if(n->data->getBounds(a,b)) tris.push_back(n->data);
+      else linShapes.push_back(n->data);
+   }
+   if(!bvh) bvh = new BVH();
+   bvh->build(tris);
+}
+
 void getLight(double* tColor, Autonoma* aut, Vector point, Vector norm, unsigned char flip){
    tColor[0] = tColor[1] = tColor[2] = 0.;
    LightNode *t = aut->lightStart;
@@ -114,12 +129,11 @@ void getLight(double* tColor, Autonoma* aut, Vector point, Vector norm, unsigned
       lightColor[1] = t->data->color[1]/255.;
       lightColor[2] = t->data->color[2]/255.;
       Vector ra = t->data->center-point;
-      ShapeNode* shapeIter = aut->listStart;
+      Ray shadowRay(point+ra*.01, ra);
       bool hit = false;
-      while(!hit && shapeIter!=NULL){
-        hit = shapeIter->data->getLightIntersection(Ray(point+ra*.01, ra), lightColor);
-         shapeIter = shapeIter->next;
-      }
+      for(size_t si=0; si<aut->linShapes.size() && !hit; si++)
+         hit = aut->linShapes[si]->getLightIntersection(shadowRay, lightColor);
+      if(!hit && aut->bvh) hit = aut->bvh->shadow(shadowRay, lightColor);
       double perc = (norm.dot(ra)/(ra.mag()*norm.mag()));
       if(!hit){
       if(flip && perc<0) perc=-perc;

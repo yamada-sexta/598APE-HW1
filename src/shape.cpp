@@ -1,4 +1,5 @@
 #include "shape.h"
+#include "bvh.h"
 
 Shape::Shape(const Vector &c, Texture* t, double ya, double pi, double ro): center(c), texture(t), yaw(ya), pitch(pi), roll(ro){
 };
@@ -34,12 +35,17 @@ void Shape::setRoll(double c){
 void calcColor(unsigned char* toFill,Autonoma* c, Ray ray, unsigned int depth){
    double curTime = inf;
    Shape* curShape = NULL;
-   for(ShapeNode* t = c->listStart; t != NULL; t = t->next){
-      double time = t->data->getIntersection(ray);
+   for(size_t i=0;i<c->linShapes.size();i++){
+      double time = c->linShapes[i]->getIntersection(ray);
       if(time < curTime){
          curTime = time;
-         curShape = t->data;
+         curShape = c->linShapes[i];
       }
+   }
+   if(c->bvh){
+      Shape* bs;
+      double bt = c->bvh->closest(ray, bs);
+      if(bt < curTime){ curTime = bt; curShape = bs; }
    }
 
    if(curShape == NULL){

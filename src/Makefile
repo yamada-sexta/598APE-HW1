@@ -28,8 +28,11 @@ $(OBJ_DIR)camera.obj: $(SRC_DIR)camera.cpp $(SRC_DIR)camera.h $(OBJ_DIR)vector.o
 $(OBJ_DIR)light.obj: $(SRC_DIR)light.cpp $(SRC_DIR)light.h $(OBJ_DIR)camera.obj
 	$(FUNC) $(output)$(OBJ_DIR)light.obj $(copt) $(SRC_DIR)light.cpp $(FLAGS)
 
-$(OBJ_DIR)shape.obj: $(SRC_DIR)shape.cpp $(SRC_DIR)shape.h $(OBJ_DIR)light.obj
+$(OBJ_DIR)shape.obj: $(SRC_DIR)shape.cpp $(SRC_DIR)shape.h $(OBJ_DIR)light.obj $(OBJ_DIR)bvh.obj
 	$(FUNC) $(output)$(OBJ_DIR)shape.obj $(copt) $(SRC_DIR)shape.cpp $(FLAGS)
+
+$(OBJ_DIR)bvh.obj: $(SRC_DIR)bvh.cpp $(SRC_DIR)bvh.h $(OBJ_DIR)light.obj
+	$(FUNC) $(output)$(OBJ_DIR)bvh.obj $(copt) $(SRC_DIR)bvh.cpp $(FLAGS)
 
 $(OBJ_DIR)sphere.obj: $(SRC_DIR)sphere.cpp $(SRC_DIR)sphere.h $(OBJ_DIR)shape.obj
 	$(FUNC) $(output)$(OBJ_DIR)sphere.obj $(copt) $(SRC_DIR)sphere.cpp $(FLAGS)

@@ -1,7 +1,9 @@
 #include "triangle.h"
 
-Triangle::Triangle(Vector c, Vector b, Vector a, Texture* t):Plane(Vector(0,0,0), t, 0., 0., 0., 0., 0.){
+Triangle::Triangle(Vector c, Vector b, Vector a, Texture* t):Plane(Vector(0,0,0), t, 0., 0., 0., 0., 0.), bmin(0,0,0), bmax(0,0,0){
    center = c;
+   bmin.x = fmin(fmin(a.x,b.x),c.x); bmin.y = fmin(fmin(a.y,b.y),c.y); bmin.z = fmin(fmin(a.z,b.z),c.z);
+   bmax.x = fmax(fmax(a.x,b.x),c.x); bmax.y = fmax(fmax(a.y,b.y),c.y); bmax.z = fmax(fmax(a.z,b.z),c.z);
    Vector righta = (b-c);
    textureX = righta.mag();
    right = righta/textureX;
@@ -66,4 +68,10 @@ bool Triangle::getLightIntersection(Ray ray, double* fill){
    fill[1]*=temp[1]/255.;
    fill[2]*=temp[2]/255.;
    return false;
+}
+
+bool Triangle::getBounds(Vector& lo, Vector& hi){
+   lo = bmin;
+   hi = bmax;
+   return true;
 }

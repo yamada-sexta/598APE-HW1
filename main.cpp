@@ -46,6 +46,7 @@ void set(int i, int j, unsigned char r, unsigned char g, unsigned char b){
 }
 
 void refresh(Autonoma* c){
+   c->rebuild();
    #pragma omp parallel for schedule(dynamic, 16)
    for(int n = 0; n<H*W; ++n)
    {
