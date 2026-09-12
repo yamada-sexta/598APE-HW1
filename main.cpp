@@ -52,7 +52,9 @@ inline void renderPixel(Autonoma* c, int n) {
 
 void refresh(Autonoma* c){
    const int pixelCount = H * W;
-   if (c->boundedShapes.size() >= 256) {
+   if (pixelCount < 65536) {
+      for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
+   } else if (c->boundedShapes.size() >= 256) {
 #pragma omp parallel for schedule(static)
       for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
    } else {
