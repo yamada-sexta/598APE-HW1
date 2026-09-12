@@ -12,7 +12,7 @@ public:
   bool getLightIntersection(const Ray& ray, double* toFill);
   void move();
   void getColor(unsigned char* toFill, double* am, double* op, double* ref, Autonoma* r, Ray ray, unsigned int depth);
-  Vector getNormal(Vector point);
+  Vector getNormal(Vector point, unsigned int depth);
   unsigned char reversible();
   void setAngles(double yaw, double pitch, double roll);
   void setYaw(double d);

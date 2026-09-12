@@ -1,7 +1,7 @@
-.DEFAULT_GOAL := all
 FUNC := g++
-output := -o 
-copt := -c 
+.DEFAULT_GOAL := all
+output := -o
+copt := -c
 SRC_DIR := ./
 OBJ_DIR := ./
 NATIVE ?= 0

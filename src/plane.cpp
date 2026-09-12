@@ -113,8 +113,8 @@ void Plane::getColor(unsigned char* toFill,double* am, double* op, double* ref, 
 unsigned char Plane::reversible(){ 
    return 1; }
 
-Vector Plane::getNormal(Vector point){
-   if(normalMap==NULL)
+Vector Plane::getNormal(Vector point, unsigned int depth){
+   if(normalMap==NULL || depth>0)
       return vect;
    else{
       Vector dist = solveScalers(right, up, vect, point-center);

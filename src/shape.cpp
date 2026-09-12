@@ -59,7 +59,7 @@ void calcColor(unsigned char* toFill,Autonoma* c, Ray ray, unsigned int depth){
    double opacity, reflection, ambient;
    curShape->getColor(toFill, &ambient, &opacity, &reflection, c, Ray(intersect, ray.vector), depth);
    
-   const Vector surfaceNormal = curShape->getNormal(intersect);
+   const Vector surfaceNormal = curShape->getNormal(intersect, depth);
    double lightData[3];
    getLight(lightData, c, intersect, surfaceNormal, curShape->reversible());
    toFill[0] = (unsigned char)(toFill[0]*(ambient+lightData[0]*(1-ambient)));

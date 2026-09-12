@@ -1,6 +1,6 @@
-.DEFAULT_GOAL := all
 FUNC := g++
-copt := -c 
+.DEFAULT_GOAL := all
+copt := -c
 output :=-o 
 NATIVE ?= 0
 OPENMP ?= 1

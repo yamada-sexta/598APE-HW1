@@ -61,7 +61,7 @@ void Sphere::getColor(unsigned char* toFill, double* amb, double* op, double* re
    double data2 = rayAtan2(ray.point.z-center.z, ray.point.x-center.x);
    texture->getColor(toFill, amb, op, ref,fix((yaw+data2)/M_TWO_PI/textureX),fix((pitch/M_TWO_PI-(data3))/textureY));
 }
-Vector Sphere::getNormal(Vector point){
+Vector Sphere::getNormal(Vector point, unsigned int depth){
    Vector vect = point-center;
 /*   A x B = <x, y, z>
 <ay bz- az by,  bz ax - az bx, ax by - bx ay>
@@ -80,7 +80,7 @@ ax = 1
 B: <0, z, -y>
 A <-1,x/y,0>
 */
-if(normalMap==NULL)
+if(normalMap==NULL || depth>0)
       return vect/radius;
      double data3 = (center.y-point.y+radius)/(2*radius);
      double data2 = rayAtan2(point.z-center.z, point.x-center.x);
