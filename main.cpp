@@ -45,12 +45,19 @@ void set(int i, int j, unsigned char r, unsigned char g, unsigned char b){
    DATA[3*(i+j*W)+2] = b; 
 }
 
+inline void renderPixel(Autonoma* c, int n) {
+   Vector ra = c->camera.forward+((double)(n%W)/W-.5)*((c->camera.right))+(.5-(double)(n/W)/H)*((c->camera.up));
+   calcColor(&DATA[3*n], c, Ray(c->camera.focus, ra), 0);
+}
+
 void refresh(Autonoma* c){
+   const int pixelCount = H * W;
+   if (c->boundedShapes.size() >= 256) {
 #pragma omp parallel for schedule(static)
-   for(int n = 0; n<H*W; ++n) 
-   { 
-      Vector ra = c->camera.forward+((double)(n%W)/W-.5)*((c->camera.right))+(.5-(double)(n/W)/H)*((c->camera.up));
-      calcColor(&DATA[3*n], c, Ray(c->camera.focus, ra), 0);
+      for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
+   } else {
+#pragma omp parallel for schedule(dynamic, 16)
+      for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
    }
 }
 
