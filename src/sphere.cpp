@@ -8,15 +8,16 @@ Sphere::Sphere(const Vector &c, Texture* t, double ya, double pi, double ro, dou
    radius = rad;
 }
 bool Sphere::getLightIntersection(Ray ray, double* fill){
+   const Vector offset = ray.point-center;
    const double A = ray.vector.mag2();
-   const double B = 2*ray.vector.dot(ray.point-center);
-   const double C = (ray.point-center).mag2()-radius*radius;
-   const double descriminant = B*B-4*A*C;
-   if(descriminant<0. || descriminant<B*((B>=0)?B:-B)) return false;
+   const double halfB = ray.vector.dot(offset);
+   const double C = offset.mag2()-radius*radius;
+   const double descriminant = halfB*halfB-A*C;
+   if(descriminant<0. || descriminant<halfB*((halfB>=0)?halfB:-halfB)) return false;
    
       const double desc = sqrt(descriminant);
-      const double root1 = (-B-desc)/(2*A);
-      const double root2 = (-B+desc)/(2*A);
+      const double root1 = (-halfB-desc)/A;
+      const double root2 = (-halfB+desc)/A;
    const double time = (root1>0)?root1:root2;
    if(time>=1.) return false;
    if (texture->isUniform() && texture->opacity > 1-1E-6) return true;
@@ -33,15 +34,16 @@ bool Sphere::getLightIntersection(Ray ray, double* fill){
    return false;
 }
 double Sphere::getIntersection(Ray ray){
+   const Vector offset = ray.point-center;
    const double A = ray.vector.mag2();
-   const double B = 2*ray.vector.dot(ray.point-center);
-   const double C = (ray.point-center).mag2()-radius*radius;
-   const double descriminant = B*B-4*A*C;
+   const double halfB = ray.vector.dot(offset);
+   const double C = offset.mag2()-radius*radius;
+   const double descriminant = halfB*halfB-A*C;
    if(descriminant<0) return inf;
    else{
       const double desc = sqrt(descriminant);
-      const double root1 = (-B-desc)/(2*A);
-      const double root2 = (-B+desc)/(2*A);
+      const double root1 = (-halfB-desc)/A;
+      const double root2 = (-halfB+desc)/A;
       return (root1>0)?(root1):((root2>0)?root2:inf);
    }
 }
