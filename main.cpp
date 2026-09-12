@@ -18,10 +18,10 @@
 #endif
 using namespace std;
 
-#include <sys/time.h>
+#include <time.h>
 
-float tdiff(struct timeval *start, struct timeval *end) {
-  return (end->tv_sec-start->tv_sec) + 1e-6*(end->tv_usec-start->tv_usec);
+double tdiff(const struct timespec *start, const struct timespec *end) {
+  return (end->tv_sec-start->tv_sec) + 1e-9*(end->tv_nsec-start->tv_nsec);
 }
 
 
@@ -563,8 +563,8 @@ int main(int argc, const char** argv){
    int frame;
    char command[200];
    
-  struct timeval start, end;
-   gettimeofday(&start, NULL);
+   struct timespec start, end;
+   clock_gettime(CLOCK_MONOTONIC_RAW, &start);
    for(frame = 0; frame<frameLen; frame++) {
       setFrame(animateFile, MAIN_DATA, frame, frameLen);      
       if (frameLen == 1) {
@@ -582,8 +582,8 @@ int main(int argc, const char** argv){
       printf("Done Frame %7d|\n", frame);
    }
 
-   gettimeofday(&end, NULL);
-   printf("Total time to create images=%0.6f seconds\n", tdiff(&start, &end));
+   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+   printf("Total time to create images=%0.9f seconds\n", tdiff(&start, &end));
 
    if (frameLen > 1 && toMovie) {
       if (png) {
