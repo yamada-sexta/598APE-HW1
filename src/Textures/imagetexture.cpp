@@ -1,17 +1,52 @@
 #include "imagetexture.h"
+#include <cstdlib>
+
+void ImageTexture::invalidateRenderCache(){
+   tiledReady = false;
+   tiledData.clear();
+}
+
+const unsigned char* ImageTexture::cachedPixel(unsigned int x, unsigned int y) const{
+   const Tile& tile = tiledData[(size_t)(y >> 2) * tiledWidth + (x >> 2)];
+   return tile.texels + (((y & 3u) << 2) + (x & 3u)) * 4u;
+}
+
+void ImageTexture::prepareRendering(){
+   tiledReady = false;
+   tiledData.clear();
+   const char* enabled = std::getenv("RAY_TEXTURE_TILES");
+   if((enabled != NULL && enabled[0] == '0') || w == 0 || h == 0 ||
+      (size_t)w * h < 4096 || imageData == NULL) return;
+   tiledWidth = (w + 3u) >> 2;
+   const unsigned int tiledHeight = (h + 3u) >> 2;
+   tiledData.resize((size_t)tiledWidth * tiledHeight);
+   for(unsigned int y = 0; y < h; ++y){
+      for(unsigned int x = 0; x < w; ++x){
+         unsigned char* dst = tiledData[(y >> 2) * tiledWidth + (x >> 2)].texels +
+            (((y & 3u) << 2) + (x & 3u)) * 4u;
+         const unsigned char* src = imageData + ((size_t)y * w + x) * 4u;
+         dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
+      }
+   }
+   tiledReady = true;
+}
 
 void ImageTexture::getColor(unsigned char* toFill, double* am, double *op, double *ref, double x, double y){
    int xi = (int)(x*w), yi = (int)(y*h);
    int p1 = 4*(xi+w*yi);
-   toFill[0] = imageData[p1];
-   toFill[1] = imageData[p1+1];
-   toFill[2] = imageData[p1+2];
-   *op = imageData[p1+3]*opacity/255.;
+   const unsigned char* pixel = (tiledReady && xi >= 0 && yi >= 0 &&
+      (unsigned int)xi < w && (unsigned int)yi < h) ?
+      cachedPixel((unsigned int)xi, (unsigned int)yi) : imageData + p1;
+   toFill[0] = pixel[0];
+   toFill[1] = pixel[1];
+   toFill[2] = pixel[2];
+   *op = pixel[3]*opacity/255.;
    *ref = reflection;
    *am = ambient;
 }
 
 void ImageTexture::maskImageAlpha(){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -27,6 +62,7 @@ int x,y;
 
 
 void ImageTexture::maskImage(unsigned char r, unsigned char g, unsigned char b, unsigned char rm, unsigned char gm, unsigned char bm, unsigned char m){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -42,6 +78,7 @@ int x,y;
 }
 
 void ImageTexture::maskImageA(unsigned char r, unsigned char g, unsigned char b, unsigned char m){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -53,6 +90,7 @@ int x,y;
       }          
 }
 void ImageTexture::maskImageU(unsigned char r, unsigned char g, unsigned char b, unsigned char m){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -64,6 +102,7 @@ int x,y;
       }          
 }
 void ImageTexture::maskImage(unsigned char r, unsigned char g, unsigned char b, unsigned char m){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -74,6 +113,7 @@ int x,y;
       }          
 }
 void ImageTexture::maskImage(unsigned char r, unsigned char g, unsigned char b){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -85,6 +125,7 @@ int x,y;
 }
 
 void ImageTexture::maskImage(ColorTexture b, unsigned char m){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -95,6 +136,7 @@ int x,y;
       }          
 }
 void ImageTexture::maskImage(ColorTexture b){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -107,6 +149,7 @@ int x,y;
 
 
 void ImageTexture::maskImage(ColorTexture* b, unsigned char m){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -117,6 +160,7 @@ int x,y;
       }          
 }
 void ImageTexture::maskImage(ColorTexture* b){
+invalidateRenderCache();
 int x,y;
    for(y = h-1; y>=0; y--)
       for(x = 0; x<w; x++){
@@ -130,15 +174,17 @@ int x,y;
 
 void ImageTexture::getColor(unsigned char* toFill, double* am, double *op, double *ref,unsigned int x, unsigned int y){
    int start = 4*(x+w*y);
-   toFill[0] = imageData[start];
-   toFill[1] = imageData[start+1];
-   toFill[2] = imageData[start+2];
-   *op = imageData[start+3]*opacity/255.;
+   const unsigned char* pixel = (tiledReady && x < w && y < h) ? cachedPixel(x, y) : imageData + start;
+   toFill[0] = pixel[0];
+   toFill[1] = pixel[1];
+   toFill[2] = pixel[2];
+   *op = pixel[3]*opacity/255.;
    *ref = reflection;
    *am = ambient;
 }
 
 unsigned char* ImageTexture::setColor(unsigned int x, unsigned int y, unsigned char* data){
+   invalidateRenderCache();
    int start = 4*(x+w*y);
    imageData[start] = data[0];
    imageData[start+1] = data[1];
@@ -148,6 +194,7 @@ unsigned char* ImageTexture::setColor(unsigned int x, unsigned int y, unsigned c
 
 
 unsigned char* ImageTexture::setColor(unsigned int x, unsigned int y, unsigned char r, unsigned char g, unsigned char b){
+   invalidateRenderCache();
    int start = 4*(x+w*y);
    imageData[start] = r;
    imageData[start+1] = g;
@@ -169,6 +216,7 @@ ImageTexture::ImageTexture(unsigned char* data, unsigned int ww, unsigned int hh
 }
 
 void ImageTexture::readPPM(FILE* f, const char* file){
+   invalidateRenderCache();
    if (f == NULL){
       printf("File loading error!!! %s\n", file);
       exit(0);

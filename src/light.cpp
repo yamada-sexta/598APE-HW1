@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <unordered_set>
 #if defined(__GNUC__) && defined(__x86_64__)
 #include <emmintrin.h>
 #define RAY_BVH4_SSE2 1
@@ -331,6 +332,15 @@ void Autonoma::buildAcceleration() {
    trianglePackets.clear();
    useBVH4 = false;
    bvh4MaxDepth = 0;
+
+   std::unordered_set<Texture*> textures;
+   textures.insert(skybox);
+   for (ShapeNode* node = listStart; node != NULL; node = node->next) {
+      textures.insert(node->data->texture);
+      textures.insert(node->data->normalMap);
+   }
+   for (Texture* texture : textures)
+      if (texture != NULL) texture->prepareRendering();
 
    for (ShapeNode* node = listStart; node != NULL; node = node->next) {
       BVHPrimitive primitive;
