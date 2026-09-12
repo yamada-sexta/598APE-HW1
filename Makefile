@@ -37,3 +37,11 @@ clean:
 	cd ./src && $(MAKE) clean
 	rm -f ./*.exe
 	rm -f ./*.obj
+
+.PHONY: check-cpu
+check-cpu: all
+	mkdir -p build/cpu-tests
+	@set -e; for test in $(wildcard tests/*.cpp); do \
+		$(FUNC) $(FLAGS) -I. $$test ./src/*.obj ./src/Textures/*.obj -o build/cpu-tests/$$(basename $$test .cpp); \
+		OMP_NUM_THREADS=4 build/cpu-tests/$$(basename $$test .cpp); \
+	done

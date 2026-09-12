@@ -46,6 +46,12 @@ struct BVHNode {
    size_t start, count;
 };
 
+struct BVH4Node {
+   double boundsMin[3][4], boundsMax[3][4];
+   int child[4];
+   unsigned char count;
+};
+
 class Autonoma{
 public:
    Camera camera;
@@ -56,7 +62,10 @@ public:
    std::vector<BVHPrimitive> boundedShapes;
    std::vector<Shape*> unboundedShapes;
    std::vector<BVHNode> bvhNodes;
+   std::vector<BVH4Node> bvh4Nodes;
    std::vector<TrianglePacket> trianglePackets;
+   bool useBVH4;
+   size_t bvh4MaxDepth;
    Autonoma(const Camera &c);
    Autonoma(const Camera &c, Texture* tex);
    void addShape(Shape* s);
@@ -68,6 +77,8 @@ public:
    bool lightIntersection(const Ray& ray, double* fill) const;
 private:
    int buildBVHNode(size_t start, size_t end);
+   int buildBVH4Node(int binaryNode, size_t depth);
+   void buildBVH4();
 };
 
 void getLight(double* toFill, Autonoma* aut, Vector point, Vector norm, unsigned char r,

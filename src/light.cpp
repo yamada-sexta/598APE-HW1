@@ -9,6 +9,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#if defined(__GNUC__) && defined(__x86_64__)
+#include <emmintrin.h>
+#define RAY_BVH4_SSE2 1
+#endif
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -25,7 +29,7 @@ unsigned char* Light::getColor(unsigned char a, unsigned char b, unsigned char c
    return r;
 }
 
-Autonoma::Autonoma(const Camera& c): camera(c){
+Autonoma::Autonoma(const Camera& c): camera(c), useBVH4(false), bvh4MaxDepth(0){
    listStart = NULL;
    listEnd = NULL;
    lightStart = NULL;
@@ -34,7 +38,7 @@ Autonoma::Autonoma(const Camera& c): camera(c){
    skybox = BLACK;
 }
 
-Autonoma::Autonoma(const Camera& c, Texture* tex): camera(c){
+Autonoma::Autonoma(const Camera& c, Texture* tex): camera(c), useBVH4(false), bvh4MaxDepth(0){
    listStart = NULL;
    listEnd = NULL;
    lightStart = NULL;
@@ -263,11 +267,70 @@ static bool intersectsBounds(const BVHNode& node, const PreparedRay& ray,
    return far >= 0.0;
 }
 
+static void intersectsBVH4(const BVH4Node& node, const PreparedRay& ray,
+                           double maximum, bool hit[4], double nearDistance[4]) {
+#if defined(RAY_BVH4_SSE2)
+   if (!ray.parallel[0] && !ray.parallel[1] && !ray.parallel[2]) {
+      __m128d near0 = _mm_setzero_pd(), near1 = near0;
+      __m128d far0 = _mm_set1_pd(maximum), far1 = far0;
+      const __m128d origin[3] = {
+         _mm_set1_pd(ray.origin[0]), _mm_set1_pd(ray.origin[1]),
+         _mm_set1_pd(ray.origin[2])};
+      for (int axis = 0; axis < 3; ++axis) {
+         const __m128d lo0 = _mm_loadu_pd(&node.boundsMin[axis][0]);
+         const __m128d lo1 = _mm_loadu_pd(&node.boundsMin[axis][2]);
+         const __m128d hi0 = _mm_loadu_pd(&node.boundsMax[axis][0]);
+         const __m128d hi1 = _mm_loadu_pd(&node.boundsMax[axis][2]);
+         const __m128d inv = _mm_set1_pd(ray.inverseDirection[axis]);
+         const __m128d a0 = _mm_mul_pd(_mm_sub_pd(lo0, origin[axis]), inv);
+         const __m128d b0 = _mm_mul_pd(_mm_sub_pd(hi0, origin[axis]), inv);
+         const __m128d a1 = _mm_mul_pd(_mm_sub_pd(lo1, origin[axis]), inv);
+         const __m128d b1 = _mm_mul_pd(_mm_sub_pd(hi1, origin[axis]), inv);
+         const __m128d first0 = _mm_min_pd(a0, b0), second0 = _mm_max_pd(a0, b0);
+         const __m128d first1 = _mm_min_pd(a1, b1), second1 = _mm_max_pd(a1, b1);
+         near0 = _mm_max_pd(near0, first0); near1 = _mm_max_pd(near1, first1);
+         far0 = _mm_min_pd(far0, second0); far1 = _mm_min_pd(far1, second1);
+      }
+      const __m128d zero = _mm_setzero_pd();
+      const int m0 = _mm_movemask_pd(_mm_and_pd(_mm_cmple_pd(near0, far0),
+                                                 _mm_cmpge_pd(far0, zero)));
+      const int m1 = _mm_movemask_pd(_mm_and_pd(_mm_cmple_pd(near1, far1),
+                                                 _mm_cmpge_pd(far1, zero)));
+      _mm_storeu_pd(nearDistance, near0); _mm_storeu_pd(nearDistance + 2, near1);
+      hit[0] = (m0 & 1) != 0; hit[1] = (m0 & 2) != 0;
+      hit[2] = (m1 & 1) != 0; hit[3] = (m1 & 2) != 0;
+      return;
+   }
+#endif
+   for (int child = 0; child < 4; ++child) {
+      double near = 0.0, far = maximum;
+      hit[child] = true;
+      for (int axis = 0; axis < 3; ++axis) {
+         if (ray.parallel[axis]) {
+            if (ray.origin[axis] < node.boundsMin[axis][child] ||
+                ray.origin[axis] > node.boundsMax[axis][child]) { hit[child] = false; break; }
+            continue;
+         }
+         double first = (node.boundsMin[axis][child] - ray.origin[axis]) * ray.inverseDirection[axis];
+         double second = (node.boundsMax[axis][child] - ray.origin[axis]) * ray.inverseDirection[axis];
+         if (first > second) std::swap(first, second);
+         if (first > near) near = first;
+         if (second < far) far = second;
+         if (near > far) break;
+      }
+      nearDistance[child] = near;
+      hit[child] = hit[child] && far >= 0.0 && near <= far;
+   }
+}
+
 void Autonoma::buildAcceleration() {
    boundedShapes.clear();
    unboundedShapes.clear();
    bvhNodes.clear();
+   bvh4Nodes.clear();
    trianglePackets.clear();
+   useBVH4 = false;
+   bvh4MaxDepth = 0;
 
    for (ShapeNode* node = listStart; node != NULL; node = node->next) {
       BVHPrimitive primitive;
@@ -291,6 +354,10 @@ void Autonoma::buildAcceleration() {
          trianglePackets.reserve((boundedShapes.size() + triangleLeafSize - 1) /
                                  triangleLeafSize);
       buildBVHNode(0, boundedShapes.size());
+      const char* wide = std::getenv("RAY_BVH4");
+      if ((wide == NULL && boundedShapes.size() >= 256) ||
+          (wide != NULL && std::strcmp(wide, "1") == 0))
+         buildBVH4();
    }
 }
 
@@ -456,6 +523,95 @@ int Autonoma::buildBVHNode(size_t start, size_t end) {
    return nodeIndex;
 }
 
+int Autonoma::buildBVH4Node(int binaryNode, size_t depth) {
+   if (depth > bvh4MaxDepth) bvh4MaxDepth = depth;
+   std::vector<int> candidates(1, binaryNode);
+   while (candidates.size() < 4) {
+      size_t expand = candidates.size();
+      double largestArea = -1.0;
+      for (size_t i = 0; i < candidates.size(); ++i) {
+         const BVHNode& candidate = bvhNodes[candidates[i]];
+         if (candidate.count == 0) {
+            const double x = candidate.boundsMax[0] - candidate.boundsMin[0];
+            const double y = candidate.boundsMax[1] - candidate.boundsMin[1];
+            const double z = candidate.boundsMax[2] - candidate.boundsMin[2];
+            const double area = 2.0 * (x*y + x*z + y*z);
+            if (area > largestArea) { largestArea = area; expand = i; }
+         }
+      }
+      if (expand == candidates.size()) break;
+      const BVHNode& node = bvhNodes[candidates[expand]];
+      candidates[expand] = node.left;
+      candidates.push_back(node.right);
+   }
+   BVH4Node wide = {};
+   wide.count = (unsigned char)candidates.size();
+   const int wideIndex = (int)bvh4Nodes.size();
+   bvh4Nodes.push_back(wide);
+   for (size_t slot = 0; slot < candidates.size(); ++slot) {
+      const int binaryChild = candidates[slot];
+      const BVHNode& child = bvhNodes[binaryChild];
+      for (int axis = 0; axis < 3; ++axis) {
+         bvh4Nodes[wideIndex].boundsMin[axis][slot] = child.boundsMin[axis];
+         bvh4Nodes[wideIndex].boundsMax[axis][slot] = child.boundsMax[axis];
+      }
+      if (child.count == 0)
+         bvh4Nodes[wideIndex].child[slot] = buildBVH4Node(binaryChild, depth + 1);
+      else
+         bvh4Nodes[wideIndex].child[slot] = -(binaryChild + 1);
+   }
+   return wideIndex;
+}
+
+void Autonoma::buildBVH4() {
+   useBVH4 = false;
+   bvh4Nodes.clear();
+   if (bvhNodes.empty() || bvhNodes[0].count != 0) return;
+   bvh4Nodes.reserve((bvhNodes.size() + 2) / 3);
+   buildBVH4Node(0, 0);
+   useBVH4 = !bvh4Nodes.empty() && 1 + 3 * bvh4MaxDepth <= 512;
+   if (std::getenv("RAY_BVH4_REPORT") != NULL)
+      std::fprintf(stderr, "BVH4: %zu nodes, binary nodes %zu, max depth %zu, %s, bytes %zu vs %zu\n",
+                   bvh4Nodes.size(), bvhNodes.size(),
+                   bvh4MaxDepth, useBVH4 ? "enabled" : "stack-limit fallback",
+                   bvh4Nodes.size() * sizeof(BVH4Node),
+                   bvhNodes.size() * sizeof(BVHNode));
+}
+
+static inline void intersectClosestLeaf(const Autonoma& scene, const BVHNode& leaf,
+                                       const Ray& ray, double& closest,
+                                       Shape*& closestShape) {
+   if (leaf.left <= -2) {
+      const TrianglePacket& packet = scene.trianglePackets[(size_t)(-leaf.left - 2)];
+      double packetClosest;
+      const int lane = trianglePacketFunction(packet, ray, closest, packetClosest);
+      if (lane >= 0) { closest = packetClosest; closestShape = packet.shapes[lane]; }
+   } else {
+      const size_t end = leaf.start + leaf.count;
+      for (size_t index = leaf.start; index < end; ++index) {
+         const double time = scene.boundedShapes[index].shape->getIntersection(ray);
+         if (time < closest) { closest = time; closestShape = scene.boundedShapes[index].shape; }
+      }
+   }
+}
+
+static inline bool intersectShadowLeaf(const Autonoma& scene, const BVHNode& leaf,
+                                      const Ray& ray, double* fill) {
+   if (leaf.left <= -2) {
+      const TrianglePacket& packet = scene.trianglePackets[(size_t)(-leaf.left - 2)];
+      double packetClosest;
+      if (packet.opaque)
+         return trianglePacketFunction(packet, ray, 1.0, packetClosest) >= 0;
+      for (size_t lane = 0; lane < packet.count; ++lane)
+         if (packet.shapes[lane]->getLightIntersection(ray, fill)) return true;
+   } else {
+      const size_t end = leaf.start + leaf.count;
+      for (size_t index = leaf.start; index < end; ++index)
+         if (scene.boundedShapes[index].shape->getLightIntersection(ray, fill)) return true;
+   }
+   return false;
+}
+
 Shape* Autonoma::closestIntersection(const Ray& ray, double& closest) const {
    Shape* closestShape = NULL;
    for (size_t index = 0; index < unboundedShapes.size(); ++index) {
@@ -468,6 +624,34 @@ Shape* Autonoma::closestIntersection(const Ray& ray, double& closest) const {
 
    if (bvhNodes.empty()) return closestShape;
    const PreparedRay preparedRay(ray);
+   if (useBVH4) {
+      double rootNear;
+      if (!intersectsBounds(bvhNodes[0], preparedRay, closest, &rootNear)) return closestShape;
+      int stack[512]; double stackNear[512]; int size = 1; stack[0] = 0; stackNear[0] = rootNear;
+      while (size) {
+         --size;
+         const int ref = stack[size];
+         if (stackNear[size] > closest) continue;
+         if (ref >= 0) {
+            const BVH4Node& wide = bvh4Nodes[ref];
+            bool hit[4]; double nearDistance[4];
+            intersectsBVH4(wide, preparedRay, closest, hit, nearDistance);
+            int order[4], count = 0;
+            for (int i = 0; i < wide.count; ++i) if (hit[i]) {
+               int j = count++;
+               while (j > 0 && nearDistance[order[j - 1]] > nearDistance[i]) { order[j] = order[j - 1]; --j; }
+               order[j] = i;
+            }
+            for (int i = count - 1; i >= 0; --i) {
+               stack[size] = wide.child[order[i]];
+               stackNear[size++] = nearDistance[order[i]];
+            }
+            continue;
+         }
+         intersectClosestLeaf(*this, bvhNodes[-ref - 1], ray, closest, closestShape);
+      }
+      return closestShape;
+   }
    int nodeStack[128];
    double nearStack[128];
    int stackSize = 0;
@@ -480,24 +664,7 @@ Shape* Autonoma::closestIntersection(const Ray& ray, double& closest) const {
       if (nearStack[stackSize] > closest) continue;
       const BVHNode& node = bvhNodes[nodeStack[stackSize]];
       if (node.count != 0) {
-         if (node.left <= -2) {
-            const TrianglePacket& packet = trianglePackets[(size_t)(-node.left - 2)];
-            double packetClosest;
-            const int lane = trianglePacketFunction(packet, ray, closest, packetClosest);
-            if (lane >= 0) {
-               closest = packetClosest;
-               closestShape = packet.shapes[lane];
-            }
-            continue;
-         }
-         const size_t end = node.start + node.count;
-         for (size_t index = node.start; index < end; ++index) {
-            const double time = boundedShapes[index].shape->getIntersection(ray);
-            if (time < closest) {
-               closest = time;
-               closestShape = boundedShapes[index].shape;
-            }
-         }
+         intersectClosestLeaf(*this, node, ray, closest, closestShape);
          continue;
       }
 
@@ -534,6 +701,22 @@ bool Autonoma::lightIntersection(const Ray& ray, double* fill) const {
 
    if (bvhNodes.empty()) return false;
    const PreparedRay preparedRay(ray);
+   if (useBVH4) {
+      if (!intersectsBounds(bvhNodes[0], preparedRay, 1.0)) return false;
+      int stack[512]; int size = 1; stack[0] = 0;
+      while (size) {
+         const int ref = stack[--size];
+         if (ref >= 0) {
+            const BVH4Node& wide = bvh4Nodes[ref];
+            bool hit[4]; double nearDistance[4];
+            intersectsBVH4(wide, preparedRay, 1.0, hit, nearDistance);
+            for (int i = 0; i < wide.count; ++i) if (hit[i]) stack[size++] = wide.child[i];
+            continue;
+         }
+         if (intersectShadowLeaf(*this, bvhNodes[-ref - 1], ray, fill)) return true;
+      }
+      return false;
+   }
    int nodeStack[128];
    int stackSize = 0;
    if (!intersectsBounds(bvhNodes[0], preparedRay, 1.0)) return false;
@@ -542,22 +725,7 @@ bool Autonoma::lightIntersection(const Ray& ray, double* fill) const {
       --stackSize;
       const BVHNode& node = bvhNodes[nodeStack[stackSize]];
       if (node.count != 0) {
-         if (node.left <= -2) {
-            const TrianglePacket& packet = trianglePackets[(size_t)(-node.left - 2)];
-            double packetClosest;
-            if (packet.opaque) {
-               if (trianglePacketFunction(packet, ray, 1.0, packetClosest) >= 0) return true;
-               continue;
-            }
-            for (size_t lane = 0; lane < packet.count; ++lane) {
-               if (packet.shapes[lane]->getLightIntersection(ray, fill)) return true;
-            }
-            continue;
-         }
-         const size_t end = node.start + node.count;
-         for (size_t index = node.start; index < end; ++index) {
-            if (boundedShapes[index].shape->getLightIntersection(ray, fill)) return true;
-         }
+         if (intersectShadowLeaf(*this, node, ray, fill)) return true;
       } else {
          double leftNear, rightNear;
          const bool hitLeft = intersectsBounds(bvhNodes[node.left], preparedRay, 1.0, &leftNear);
