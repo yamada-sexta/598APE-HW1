@@ -1,7 +1,7 @@
 #include "triangle.h"
 #include <algorithm>
 
-Triangle::Triangle(Vector c, Vector b, Vector a, Texture* t):Plane(Vector(0,0,0), t, 0., 0., 0., 0., 0.){
+Triangle::Triangle(Vector c, Vector b, Vector a, Texture* t):Plane(Vector(0,0,0), t, 0., 0., 0., 0., 0.), vertex(c), edge1(b-c), edge2(a-c){
    const double epsilon = 1e-9;
    boundsMin[0] = std::min(c.x, std::min(b.x, a.x)) - epsilon;
    boundsMin[1] = std::min(c.y, std::min(b.y, a.y)) - epsilon;
@@ -55,31 +55,36 @@ bool Triangle::getBounds(double outMin[3], double outMax[3]) const {
 }
 
 double Triangle::getIntersection(Ray ray){
-   double time = Plane::getIntersection(ray);
-   if(time==inf) 
-      return time;
-   Vector dist = solveScalers(right, up, vect, ray.point+ray.vector*time-center); 
-   unsigned char tmp = (thirdX - dist.x) * textureY + (thirdX-textureX) * (dist.y - textureY) < 0.0;
-   return((tmp!=(textureX * dist.y < 0.0)) || (tmp != (dist.x * textureY - thirdX * dist.y < 0.0)))?inf:time;
+   double time, u, v;
+   return intersect(ray, time, u, v) ? time : inf;
 }
 
 bool Triangle::getLightIntersection(Ray ray, double* fill){
-   const double t = ray.vector.dot(vect);
-   const double norm = vect.dot(ray.point)+d;
-   const double r = -norm/t;
-   if(r<=0. || r>=1.) return false;
-   Vector dist = solveScalers(right, up, vect, ray.point+ray.vector*r-center);
-   
-   unsigned char tmp = (thirdX - dist.x) * textureY + (thirdX-textureX) * (dist.y - textureY) < 0.0;
-   if ((tmp!=(textureX * dist.y < 0.0)) || (tmp != (dist.x * textureY - thirdX * dist.y < 0.0))) return false;
-   
+   double time, u, v;
+   if (!intersect(ray, time, u, v) || time >= 1.0) return false;
    if(texture->opacity>1-1E-6) return true;   
    unsigned char temp[4];
    double amb, op, ref;
-   texture->getColor(temp, &amb, &op, &ref,fix(dist.x/textureX-.5), fix(dist.y/textureY-.5));
+   const double textureU = u + v * thirdX / textureX;
+   texture->getColor(temp, &amb, &op, &ref, fix(textureU-.5), fix(v-.5));
    if(op>1-1E-6) return true;
    fill[0]*=temp[0]/255.;
    fill[1]*=temp[1]/255.;
    fill[2]*=temp[2]/255.;
    return false;
+}
+
+bool Triangle::intersect(const Ray& ray, double& time, double& u, double& v) const {
+   const Vector p = ray.vector.cross(edge2);
+   const double determinant = edge1.dot(p);
+   if (std::abs(determinant) < 1e-12) return false;
+   const double inverseDeterminant = 1.0 / determinant;
+   const Vector offset = ray.point - vertex;
+   u = offset.dot(p) * inverseDeterminant;
+   if (u < 0.0 || u > 1.0) return false;
+   const Vector q = offset.cross(edge1);
+   v = ray.vector.dot(q) * inverseDeterminant;
+   if (v < 0.0 || u + v > 1.0) return false;
+   time = edge2.dot(q) * inverseDeterminant;
+   return time > 0.0;
 }
