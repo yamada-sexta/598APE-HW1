@@ -8,6 +8,7 @@ NATIVE ?= 0
 OPENMP ?= 1
 EXACT_TRIG ?= 0
 OPT ?= 3
+FAST_MATH ?= 0
 ARCH_FLAGS :=
 THREAD_FLAGS :=
 QUALITY_FLAGS :=
@@ -19,6 +20,9 @@ THREAD_FLAGS += -fopenmp
 endif
 ifeq ($(EXACT_TRIG),1)
 QUALITY_FLAGS += -DRAY_EXACT_TRIG
+endif
+ifeq ($(FAST_MATH),1)
+QUALITY_FLAGS += -ffast-math
 endif
 FLAGS := -O$(OPT) -flto -DNDEBUG -MMD -MP $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
 
