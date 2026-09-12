@@ -3,6 +3,8 @@
 Sphere::Sphere(const Vector &c, Texture* t, double ya, double pi, double ro, double rad): Shape(c, t, ya, pi, ro){
   textureX = textureY = 1.;
   normalMap = NULL;
+  mapX = mapY = 1.0;
+  mapOffX = mapOffY = 0.0;
    radius = rad;
 }
 bool Sphere::getLightIntersection(Ray ray, double* fill){

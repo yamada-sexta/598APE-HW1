@@ -5,6 +5,7 @@ Plane::Plane(const Vector &c, Texture* t, double ya, double pi, double ro, doubl
    setAngles(yaw, pitch, roll);
    normalMap = NULL;
    mapX = textureX; mapY = textureY;
+   mapOffX = mapOffY = 0.0;
 }
 
 void Plane::setAngles(double a, double b, double c){
