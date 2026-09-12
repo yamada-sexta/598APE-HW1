@@ -79,7 +79,7 @@ B: <0, z, -y>
 A <-1,x/y,0>
 */
 if(normalMap==NULL)
-      return vect;
+      return vect/radius;
      double data3 = (center.y-point.y+radius)/(2*radius);
      double data2 = atan2( point.z-center.z, point.x-center.x);
      vect = vect.normalize();

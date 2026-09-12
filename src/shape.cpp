@@ -74,7 +74,7 @@ void calcColor(unsigned char* toFill,Autonoma* c, Ray ray, unsigned int depth){
          toFill[2]= (unsigned char)(toFill[2]*opacity+col[2]*(1-opacity));        
       }
       if(reflection>1e-6){
-         Vector norm = curShape->getNormal(intersect).normalize();
+         Vector norm = curShape->getNormal(intersect);
          Vector vec = ray.vector-2*norm*(norm.dot(ray.vector));
          Ray nextRay = Ray(intersect+vec*1E-4, vec);
          calcColor(col, c, nextRay, depth+1);

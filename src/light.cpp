@@ -333,7 +333,7 @@ void getLight(double* tColor, Autonoma* aut, Vector point, Vector norm, unsigned
       lightColor[2] = t->data->color[2]/255.;
       Vector ra = t->data->center-point;
       const bool hit = aut->lightIntersection(Ray(point+ra*.01, ra), lightColor);
-      double perc = (norm.dot(ra)/(ra.mag()*norm.mag()));
+      double perc = norm.dot(ra) / ra.mag();
       if(!hit){
       if(flip && perc<0) perc=-perc;
         if(perc>0){
