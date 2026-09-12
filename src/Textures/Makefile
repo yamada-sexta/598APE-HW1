@@ -1,7 +1,17 @@
 FUNC := g++
 copt := -c 
 output :=-o 
-FLAGS := -O3 -g -Werror
+NATIVE ?= 0
+OPENMP ?= 1
+ARCH_FLAGS :=
+THREAD_FLAGS :=
+ifeq ($(NATIVE),1)
+ARCH_FLAGS += -march=native
+endif
+ifeq ($(OPENMP),1)
+THREAD_FLAGS += -fopenmp
+endif
+FLAGS := -O3 -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) -g -Werror
 OBJ_DIR :=./
 
 CPP_FILES := $(wildcard *.cpp)

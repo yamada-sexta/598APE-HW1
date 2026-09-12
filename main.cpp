@@ -32,7 +32,7 @@ unsigned char* getColor(unsigned char a, unsigned char b, unsigned char c){
      
 int W = 1000, H = 1000;
 
-unsigned char* DATA = (unsigned char*)malloc(W*H*3*sizeof(unsigned char));
+unsigned char* DATA = NULL;
 unsigned char get(int i, int j, int k){
    return DATA[3*(i+j*W)+k]; 
 }
@@ -46,6 +46,7 @@ void set(int i, int j, unsigned char r, unsigned char g, unsigned char b){
 }
 
 void refresh(Autonoma* c){
+#pragma omp parallel for schedule(static)
    for(int n = 0; n<H*W; ++n) 
    { 
       Vector ra = c->camera.forward+((double)(n%W)/W-.5)*((c->camera.right))+(.5-(double)(n/W)/H)*((c->camera.up));
@@ -336,7 +337,7 @@ Autonoma* createInputs(const char* inputFile) {
    return MAIN_DATA;
 }
 
-double identity(double x, double from, double to) {
+double linearfn(double x, double from, double to) {
    return (1 - x) * from + x * to;
 }
 double expfn(double x, double from, double to) {
@@ -361,7 +362,7 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
       while (lscanf(f, "%s %s %d %s %lf %lf", transition_type, object_type, &obj_num, field_type, &from, &to) != EOF) {
          double (*func)(double, double, double);
          if (streq(transition_type, "linear")) {
-            func = identity;
+            func = linearfn;
          } else if (streq(transition_type, "exp")) {
             func = expfn;
          } else if (streq(transition_type, "sin")) {
@@ -527,6 +528,16 @@ int main(int argc, const char** argv){
       } else {
          outFile = "output/output.mp4";
       }
+   }
+
+   if (W <= 0 || H <= 0) {
+      fprintf(stderr, "Image dimensions must be positive\n");
+      return 1;
+   }
+   DATA = (unsigned char*)malloc((size_t)W * (size_t)H * 3);
+   if (DATA == NULL) {
+      fprintf(stderr, "Could not allocate image buffer for %dx%d image\n", W, H);
+      return 1;
    }
 
    Autonoma* MAIN_DATA = createInputs(inFile);
