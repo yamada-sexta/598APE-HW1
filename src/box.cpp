@@ -29,3 +29,18 @@ bool Box::getLightIntersection(Ray ray, double* fill){
    fill[2]*=temp[2]/255.;
    return false;
 }
+
+bool Box::getBounds(double boundsMin[3], double boundsMax[3]) const {
+   const double extent[3] = {
+      std::abs(right.x) * textureX * 0.5 + std::abs(up.x) * textureY * 0.5,
+      std::abs(right.y) * textureX * 0.5 + std::abs(up.y) * textureY * 0.5,
+      std::abs(right.z) * textureX * 0.5 + std::abs(up.z) * textureY * 0.5
+   };
+   const double position[3] = {center.x, center.y, center.z};
+   for (int axis = 0; axis < 3; ++axis) {
+      const double padding = 1e-9 * (1.0 + extent[axis]);
+      boundsMin[axis] = position[axis] - extent[axis] - padding;
+      boundsMax[axis] = position[axis] + extent[axis] + padding;
+   }
+   return true;
+}
