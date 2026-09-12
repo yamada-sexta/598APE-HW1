@@ -116,3 +116,13 @@ void Sphere::setRoll(double c){
    zcos = cos(roll);
    zsin = sin(roll);
 }
+
+bool Sphere::getBounds(double boundsMin[3], double boundsMax[3]) const {
+   boundsMin[0] = center.x - radius;
+   boundsMin[1] = center.y - radius;
+   boundsMin[2] = center.z - radius;
+   boundsMax[0] = center.x + radius;
+   boundsMax[1] = center.y + radius;
+   boundsMax[2] = center.z + radius;
+   return true;
+}
