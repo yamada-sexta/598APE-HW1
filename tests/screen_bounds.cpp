@@ -42,5 +42,9 @@ int main() {
       }
    }
    DATA = NULL;
+#ifdef _OPENMP
    std::puts("screen/full rendering matches for 7 camera cases with 1 and 4 workers");
+#else
+   std::puts("screen/full rendering matches for 7 camera cases without OpenMP");
+#endif
 }

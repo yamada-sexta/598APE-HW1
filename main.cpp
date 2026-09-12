@@ -196,7 +196,7 @@ void outputPPM(char* file){
 void output(char* file){
    char command[2000];
    FILE* f;
-   snprintf(command, sizeof(command), "magick ppm:- %s", file);
+   snprintf(command, sizeof(command), "magick ppm:- %.1900s", file);
    printf("%s\n",command);
    f = popen(command, "w");
    outputPPM(f);
@@ -673,7 +673,7 @@ int main(int argc, const char** argv){
    MAIN_DATA->buildAcceleration();
    
    int frame;
-   char command[200];
+   char command[2000];
    
    struct timespec start, end;
    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -699,9 +699,9 @@ int main(int argc, const char** argv){
 
    if (frameLen > 1 && toMovie) {
       if (png) {
-         snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %s.tmp.%%07d.png -vcodec ffv1 %s.tmp.avi && ffmpeg -y -i %s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %s", outFile, outFile, outFile, outFile);
+         snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %.400s.tmp.%%07d.png -vcodec ffv1 %.400s.tmp.avi && ffmpeg -y -i %.400s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %.400s", outFile, outFile, outFile, outFile);
       } else {
-         snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %s.tmp.%%07d.ppm -vcodec ffv1 %s.tmp.avi && ffmpeg -y -i %s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %s", outFile, outFile, outFile, outFile);         
+         snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %.400s.tmp.%%07d.ppm -vcodec ffv1 %.400s.tmp.avi && ffmpeg -y -i %.400s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %.400s", outFile, outFile, outFile, outFile);         
       }
       return system(command);
    }   
