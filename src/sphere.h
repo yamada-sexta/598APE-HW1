@@ -9,7 +9,7 @@ public:
   double getIntersection(const Ray& ray);
   void move();
   bool getLightIntersection(const Ray& ray, double* fill);
-  void getColor(unsigned char* toFill, double* am, double* op, double* ref, Autonoma* r, Ray ray, unsigned int depth);
+  void getColor(unsigned char* toFill, double* am, double* op, double* ref, Autonoma* r, const Ray& ray, unsigned int depth);
   Vector getNormal(Vector point, unsigned int depth);
   bool getBounds(double boundsMin[3], double boundsMax[3]) const;
   unsigned char reversible();

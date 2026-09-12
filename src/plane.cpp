@@ -102,7 +102,7 @@ bool Plane::getLightIntersection(const Ray& ray, double* fill){
 void Plane::move(){
    d = -vect.dot(center);
 }
-void Plane::getColor(unsigned char* toFill,double* am, double* op, double* ref, Autonoma* r, Ray ray, unsigned int depth){
+void Plane::getColor(unsigned char* toFill,double* am, double* op, double* ref, Autonoma* r, const Ray& ray, unsigned int depth){
    if (texture->isUniform()) {
       texture->getColor(toFill, am, op, ref, 0.0, 0.0);
       return;

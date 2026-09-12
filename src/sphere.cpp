@@ -52,7 +52,7 @@ void Sphere::move(){
 }
 unsigned char Sphere::reversible(){return 0;}
 
-void Sphere::getColor(unsigned char* toFill, double* amb, double* op, double* ref, Autonoma* r, Ray ray, unsigned int depth){
+void Sphere::getColor(unsigned char* toFill, double* amb, double* op, double* ref, Autonoma* r, const Ray& ray, unsigned int depth){
    if (texture->isUniform()) {
       texture->getColor(toFill, amb, op, ref, 0.0, 0.0);
       return;
