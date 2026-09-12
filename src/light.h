@@ -32,10 +32,10 @@ struct BVHPrimitive {
 };
 
 struct alignas(64) TrianglePacket {
-   double vertexX[8], vertexY[8], vertexZ[8];
-   double edge1X[8], edge1Y[8], edge1Z[8];
-   double edge2X[8], edge2Y[8], edge2Z[8];
-   Shape* shapes[8];
+   float vertexX[16], vertexY[16], vertexZ[16];
+   float edge1X[16], edge1Y[16], edge1Z[16];
+   float edge2X[16], edge2Y[16], edge2Z[16];
+   Shape* shapes[16];
    size_t count;
    bool opaque;
 };

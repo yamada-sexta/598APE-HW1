@@ -122,9 +122,9 @@ static size_t triangleLeafSize = 4;
 static const char* triangleSIMDName = "scalar";
 
 #if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
-typedef double RayVec2d __attribute__((vector_size(16)));
-typedef double RayVec4d __attribute__((vector_size(32)));
-typedef double RayVec8d __attribute__((vector_size(64)));
+typedef float RayVec4f __attribute__((vector_size(16)));
+typedef float RayVec8f __attribute__((vector_size(32)));
+typedef float RayVec16f __attribute__((vector_size(64)));
 
 #define DEFINE_TRIANGLE_PACKET(name, targetName, Vec, lanes) \
 __attribute__((target(targetName))) \
@@ -141,8 +141,8 @@ static int name(const TrianglePacket& packet, const Ray& ray, double maximum, do
    __builtin_memcpy(&e2z, packet.edge2Z, sizeof(Vec)); \
    Vec dx = {}, dy = {}, dz = {}, originX = {}, originY = {}, originZ = {}, one = {}; \
    for (size_t lane = 0; lane < lanes; ++lane) { \
-      dx[lane] = ray.vector.x; dy[lane] = ray.vector.y; dz[lane] = ray.vector.z; \
-      originX[lane] = ray.point.x; originY[lane] = ray.point.y; originZ[lane] = ray.point.z; one[lane] = 1.0; \
+      dx[lane] = (float)ray.vector.x; dy[lane] = (float)ray.vector.y; dz[lane] = (float)ray.vector.z; \
+      originX[lane] = (float)ray.point.x; originY[lane] = (float)ray.point.y; originZ[lane] = (float)ray.point.z; one[lane] = 1.0f; \
    } \
    const Vec ox = originX - vx, oy = originY - vy, oz = originZ - vz; \
    const Vec px = dy*e2z - dz*e2y, py = dz*e2x - dx*e2z, pz = dx*e2y - dy*e2x; \
@@ -164,10 +164,10 @@ static int name(const TrianglePacket& packet, const Ray& ray, double maximum, do
    return best; \
 }
 
-DEFINE_TRIANGLE_PACKET(intersectTriangleSSE2, "sse2", RayVec2d, 2)
-DEFINE_TRIANGLE_PACKET(intersectTriangleAVX, "avx", RayVec4d, 4)
-DEFINE_TRIANGLE_PACKET(intersectTriangleAVX2, "avx2,fma", RayVec4d, 4)
-DEFINE_TRIANGLE_PACKET(intersectTriangleAVX512, "avx512f", RayVec8d, 8)
+DEFINE_TRIANGLE_PACKET(intersectTriangleSSE2, "sse2", RayVec4f, 4)
+DEFINE_TRIANGLE_PACKET(intersectTriangleAVX, "avx", RayVec8f, 8)
+DEFINE_TRIANGLE_PACKET(intersectTriangleAVX2, "avx2,fma", RayVec8f, 8)
+DEFINE_TRIANGLE_PACKET(intersectTriangleAVX512, "avx512f", RayVec16f, 16)
 #undef DEFINE_TRIANGLE_PACKET
 
 static void selectTriangleSIMD(size_t primitiveCount) {
@@ -185,25 +185,27 @@ static void selectTriangleSIMD(size_t primitiveCount) {
    const bool preferScalar = automatic && primitiveCount >= 10000 && workers >= 4;
    if (!preferScalar && (automatic || std::strcmp(requested, "avx512") == 0) && __builtin_cpu_supports("avx512f")) {
       trianglePacketFunction = intersectTriangleAVX512;
-      trianglePacketWidth = 8;
-      triangleLeafSize = 8;
+      trianglePacketWidth = 16;
+      triangleLeafSize = 16;
       triangleSIMDName = "avx512";
    } else if (!preferScalar && (automatic || std::strcmp(requested, "avx2") == 0) && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
       trianglePacketFunction = intersectTriangleAVX2;
-      trianglePacketWidth = 4;
-      triangleLeafSize = 4;
+      trianglePacketWidth = 8;
+      triangleLeafSize = 8;
       triangleSIMDName = "avx2";
    } else if (!preferScalar && (automatic || std::strcmp(requested, "avx") == 0) && __builtin_cpu_supports("avx")) {
       trianglePacketFunction = intersectTriangleAVX;
-      trianglePacketWidth = 4;
-      triangleLeafSize = 4;
+      trianglePacketWidth = 8;
+      triangleLeafSize = 8;
       triangleSIMDName = "avx";
    } else if (!preferScalar && (automatic || std::strcmp(requested, "sse2") == 0) && __builtin_cpu_supports("sse2")) {
       trianglePacketFunction = intersectTriangleSSE2;
-      trianglePacketWidth = 2;
-      triangleLeafSize = 2;
+      trianglePacketWidth = 4;
+      triangleLeafSize = 4;
       triangleSIMDName = "sse2";
    }
+   if (automatic && primitiveCount >= 10000 && triangleLeafSize > 8)
+      triangleLeafSize = 8;
    const char* forcedLeafSize = std::getenv("RAY_PACKET_SIZE");
    if (trianglePacketFunction != NULL && forcedLeafSize != NULL) {
       const long value = std::strtol(forcedLeafSize, NULL, 10);
