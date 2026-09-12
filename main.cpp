@@ -19,6 +19,7 @@
 using namespace std;
 
 #include <time.h>
+#include <cmath>
 
 double tdiff(const struct timespec *start, const struct timespec *end) {
   return (end->tv_sec-start->tv_sec) + 1e-9*(end->tv_nsec-start->tv_nsec);
@@ -54,12 +55,123 @@ inline void renderPixel(Autonoma* c, size_t n) {
    calcColor(&DATA[3*n], c, Ray(c->camera.focus, ra), 0);
 }
 
+struct ScreenBounds {
+   int left, right, top, bottom;
+   bool valid, empty;
+};
+
+static ScreenBounds projectedBounds(const Autonoma* c) {
+   ScreenBounds result = {0, W, 0, H, false, false};
+   if (c->boundedShapes.size() < 256 || !c->unboundedShapes.empty() ||
+       !c->skybox->isUniform() || c->bvhNodes.empty()) return result;
+
+   const Vector& f = c->camera.forward;
+   const Vector& r = c->camera.right;
+   const Vector& u = c->camera.up;
+   const double eps = 1e-9;
+   const Vector ru = r.cross(u), uf = u.cross(f), fr = f.cross(r);
+   const double determinant = f.dot(ru);
+   if (!std::isfinite(determinant) || std::abs(determinant) <= eps) return result;
+
+   double minX = inf, maxX = -inf, minY = inf, maxY = -inf;
+   double minDepth = inf, maxDepth = -inf;
+   const BVHNode& root = c->bvhNodes[0];
+   for (int mask = 0; mask < 8; ++mask) {
+      Vector q(root.boundsMin[0] + ((mask & 1) ? 1.0 : 0.0) *
+                  (root.boundsMax[0] - root.boundsMin[0]),
+               root.boundsMin[1] + ((mask & 2) ? 1.0 : 0.0) *
+                  (root.boundsMax[1] - root.boundsMin[1]),
+               root.boundsMin[2] + ((mask & 4) ? 1.0 : 0.0) *
+                  (root.boundsMax[2] - root.boundsMin[2]));
+      q = q - c->camera.focus;
+      const double depth = q.dot(ru) / determinant;
+      if (!std::isfinite(depth)) return result;
+      minDepth = std::min(minDepth, depth);
+      maxDepth = std::max(maxDepth, depth);
+      if (depth > 1e-9) {
+         const double x = (q.dot(uf) / determinant) / depth;
+         const double y = (q.dot(fr) / determinant) / depth;
+         if (!std::isfinite(x) || !std::isfinite(y)) return result;
+         minX = std::min(minX, W * (x + .5));
+         maxX = std::max(maxX, W * (x + .5));
+         minY = std::min(minY, H * (.5 - y));
+         maxY = std::max(maxY, H * (.5 - y));
+      }
+   }
+   if (maxDepth < -eps) { result.valid = true; result.empty = true; return result; }
+   if (minDepth <= eps || !std::isfinite(minX) || !std::isfinite(maxX) ||
+       !std::isfinite(minY) || !std::isfinite(maxY)) return result;
+   minX = std::max(-2.0, std::min((double)W + 2.0, minX));
+   maxX = std::max(-2.0, std::min((double)W + 2.0, maxX));
+   minY = std::max(-2.0, std::min((double)H + 2.0, minY));
+   maxY = std::max(-2.0, std::min((double)H + 2.0, maxY));
+   const double paddedLeft = std::floor(minX) - 2.0;
+   const double paddedRight = std::ceil(maxX) + 2.0;
+   const double paddedTop = std::floor(minY) - 2.0;
+   const double paddedBottom = std::ceil(maxY) + 2.0;
+   result.left = (int)std::max(0.0, std::min((double)W, paddedLeft));
+   result.right = (int)std::max(0.0, std::min((double)W, paddedRight));
+   result.top = (int)std::max(0.0, std::min((double)H, paddedTop));
+   result.bottom = (int)std::max(0.0, std::min((double)H, paddedBottom));
+   result.valid = true;
+   result.empty = result.left >= result.right || result.top >= result.bottom;
+   return result;
+}
+
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+static void fillSkySpan(int y, int begin, int end, const unsigned char sky[3]) {
+   const unsigned char red = sky[0], green = sky[1], blue = sky[2];
+   unsigned char* row = DATA + 3 * (size_t)y * (size_t)W;
+   for (int x = begin; x < end; ++x) {
+      unsigned char* pixel = row + 3 * (size_t)x;
+      pixel[0] = red; pixel[1] = green; pixel[2] = blue;
+   }
+}
+
+static void renderBoundedRow(Autonoma* c, const ScreenBounds& screen, int y,
+                             const unsigned char sky[3]) {
+   fillSkySpan(y, 0, screen.left, sky);
+   fillSkySpan(y, screen.right, W, sky);
+   for (int x = screen.left; x < screen.right; ++x)
+      renderPixel(c, (size_t)x + (size_t)y * (size_t)W);
+}
+
 void refresh(Autonoma* c){
    const size_t pixelCount = (size_t)H * (size_t)W;
    int workerCount = 1;
 #ifdef _OPENMP
    workerCount = omp_get_max_threads();
 #endif
+   const char* screenSetting = std::getenv("RAY_SCREEN_BOUNDS");
+   const bool screenGate = screenSetting == NULL || strcmp(screenSetting, "0") != 0;
+   const ScreenBounds screen = screenGate ? projectedBounds(c) :
+      ScreenBounds{0, W, 0, H, false, false};
+   if (screenGate && screen.valid) {
+      unsigned char sky[3]; double am, op, ref;
+      c->skybox->getColor(sky, &am, &op, &ref, 0.0, 0.0);
+      if (std::getenv("RAY_SCREEN_REPORT") != NULL)
+         std::fprintf(stderr, "screen bounds: %s [%d,%d) x [%d,%d)\n",
+                      screen.empty ? "empty" : "enabled", screen.left,
+                      screen.right, screen.top, screen.bottom);
+      if (screen.empty) {
+         for (int y = 0; y < H; ++y) fillSkySpan(y, 0, W, sky);
+         return;
+      }
+      for (int y = 0; y < screen.top; ++y) fillSkySpan(y, 0, W, sky);
+      for (int y = screen.bottom; y < H; ++y) fillSkySpan(y, 0, W, sky);
+#ifdef _OPENMP
+      if (workerCount > 1 && pixelCount >= 65536) {
+#pragma omp parallel for schedule(static)
+         for (int y = screen.top; y < screen.bottom; ++y)
+            renderBoundedRow(c, screen, y, sky);
+      } else
+#endif
+      for (int y = screen.top; y < screen.bottom; ++y)
+         renderBoundedRow(c, screen, y, sky);
+      return;
+   }
    if (workerCount == 1 || pixelCount < 65536) {
       for (size_t n = 0; n < pixelCount; ++n) renderPixel(c, n);
    } else if (c->boundedShapes.size() >= 256) {
