@@ -23,7 +23,7 @@ bool Sphere::getLightIntersection(Ray ray, double* fill){
    if (texture->isUniform() && texture->opacity > 1-1E-6) return true;
    Vector point = ray.point+ray.vector*time;
    double data2 = (center.y-point.y+radius)/(2*radius);
-   double data3 = atan2( point.z-center.z, point.x-center.x);
+   double data3 = rayAtan2(point.z-center.z, point.x-center.x);
    unsigned char temp[4];
    double amb, op, ref;
    texture->getColor(temp, &amb, &op, &ref,fix((yaw+data2)/M_TWO_PI/textureX),fix((pitch/M_TWO_PI-(data3)))/textureY);
@@ -58,7 +58,7 @@ void Sphere::getColor(unsigned char* toFill, double* amb, double* op, double* re
       return;
    }
    double data3 = (center.y-ray.point.y+radius)/(2*radius);
-   double data2 = atan2( ray.point.z-center.z, ray.point.x-center.x);
+   double data2 = rayAtan2(ray.point.z-center.z, ray.point.x-center.x);
    texture->getColor(toFill, amb, op, ref,fix((yaw+data2)/M_TWO_PI/textureX),fix((pitch/M_TWO_PI-(data3))/textureY));
 }
 Vector Sphere::getNormal(Vector point){
@@ -83,7 +83,7 @@ A <-1,x/y,0>
 if(normalMap==NULL)
       return vect/radius;
      double data3 = (center.y-point.y+radius)/(2*radius);
-     double data2 = atan2( point.z-center.z, point.x-center.x);
+     double data2 = rayAtan2(point.z-center.z, point.x-center.x);
      vect = vect.normalize();
      Vector right = Vector(vect.x, vect.z, -vect.y);
      Vector up = Vector(vect.z, vect.y, -vect.x);

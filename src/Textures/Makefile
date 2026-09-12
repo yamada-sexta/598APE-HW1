@@ -3,15 +3,20 @@ copt := -c
 output :=-o 
 NATIVE ?= 0
 OPENMP ?= 1
+EXACT_TRIG ?= 0
 ARCH_FLAGS :=
 THREAD_FLAGS :=
+QUALITY_FLAGS :=
 ifeq ($(NATIVE),1)
 ARCH_FLAGS += -march=native
 endif
 ifeq ($(OPENMP),1)
 THREAD_FLAGS += -fopenmp
 endif
-FLAGS := -O3 -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) -g -Werror
+ifeq ($(EXACT_TRIG),1)
+QUALITY_FLAGS += -DRAY_EXACT_TRIG
+endif
+FLAGS := -O3 -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
 OBJ_DIR :=./
 
 CPP_FILES := $(wildcard *.cpp)

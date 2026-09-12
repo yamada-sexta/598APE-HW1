@@ -26,6 +26,8 @@ double ground(double e);
 
 double fix(double a);
 
+double rayAtan2(double y, double x);
+
 char lowerCase(char c);
 
 int fpeek(FILE* f);

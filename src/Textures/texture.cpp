@@ -12,6 +12,25 @@ double fix(double a){
    return a - floor(a);
 }
 
+double rayAtan2(double y, double x){
+#ifdef RAY_EXACT_TRIG
+   return atan2(y, x);
+#else
+   const double absoluteY = fabs(y) + 1e-12;
+   double ratio;
+   double angle;
+   if (x < 0.0) {
+      ratio = (x + absoluteY) / (absoluteY - x);
+      angle = 3.0 * M_PI / 4.0;
+   } else {
+      ratio = (x - absoluteY) / (x + absoluteY);
+      angle = M_PI / 4.0;
+   }
+   angle += (0.1963 * ratio * ratio - 0.9817) * ratio;
+   return y < 0.0 ? -angle : angle;
+#endif
+}
+
 double ground(double e){
    return (e>1.)?1.:e;
 }

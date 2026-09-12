@@ -5,15 +5,20 @@ SRC_DIR := ./
 OBJ_DIR := ./
 NATIVE ?= 0
 OPENMP ?= 1
+EXACT_TRIG ?= 0
 ARCH_FLAGS :=
 THREAD_FLAGS :=
+QUALITY_FLAGS :=
 ifeq ($(NATIVE),1)
 ARCH_FLAGS += -march=native
 endif
 ifeq ($(OPENMP),1)
 THREAD_FLAGS += -fopenmp
 endif
-FLAGS := -O3 -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) -g -Werror
+ifeq ($(EXACT_TRIG),1)
+QUALITY_FLAGS += -DRAY_EXACT_TRIG
+endif
+FLAGS := -O3 -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
 
 CPP_FILES := $(wildcard *.cpp)
 OBJ_FILES := $(addprefix $(OBJ_DIR),$(notdir $(CPP_FILES:.cpp=.obj)))
@@ -24,7 +29,7 @@ TEXTURE_OBJ_FILES := $(addprefix $(OBJ_DIR)Textures/,$(notdir $(TEXTURE_CPP_FILE
 all: $(SRC_DIR)texture $(OBJ_FILES)
 
 texture:
-	cd $(SRC_DIR)Textures && make
+	cd $(SRC_DIR)Textures && $(MAKE)
 
 $(OBJ_DIR)vector.obj: $(SRC_DIR)vector.cpp $(SRC_DIR)vector.h
 	$(FUNC) $(output)$(OBJ_DIR)vector.obj $(copt) $(SRC_DIR)vector.cpp $(FLAGS)
@@ -69,5 +74,5 @@ $(OBJ_DIR)disk.obj: $(SRC_DIR)disk.cpp $(SRC_DIR)disk.h $(OBJ_DIR)/plane.obj
 	$(FUNC) $(output)$(OBJ_DIR)disk.obj $(copt) $(SRC_DIR)disk.cpp $(FLAGS)
 
 clean:
-	cd Textures && make clean
+	cd Textures && $(MAKE) clean
 	rm -f $(OBJ_DIR)*.obj
