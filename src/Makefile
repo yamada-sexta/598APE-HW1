@@ -1,3 +1,4 @@
+.DEFAULT_GOAL := all
 FUNC := g++
 output := -o 
 copt := -c 
@@ -18,13 +19,16 @@ endif
 ifeq ($(EXACT_TRIG),1)
 QUALITY_FLAGS += -DRAY_EXACT_TRIG
 endif
-FLAGS := -O3 -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
+FLAGS := -O3 -flto -DNDEBUG -MMD -MP $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
 
 CPP_FILES := $(wildcard *.cpp)
 OBJ_FILES := $(addprefix $(OBJ_DIR),$(notdir $(CPP_FILES:.cpp=.obj)))
 
 TEXTURE_CPP_FILES := $(wildcard Textures/*.cpp)m
 TEXTURE_OBJ_FILES := $(addprefix $(OBJ_DIR)Textures/,$(notdir $(TEXTURE_CPP_FILES:.cpp=.obj)))
+DEP_FILES := $(OBJ_FILES:.obj=.d)
+
+-include $(DEP_FILES)
 
 all: $(SRC_DIR)texture $(OBJ_FILES)
 
@@ -75,4 +79,4 @@ $(OBJ_DIR)disk.obj: $(SRC_DIR)disk.cpp $(SRC_DIR)disk.h $(OBJ_DIR)/plane.obj
 
 clean:
 	cd Textures && $(MAKE) clean
-	rm -f $(OBJ_DIR)*.obj
+	rm -f $(OBJ_DIR)*.obj $(OBJ_DIR)*.d

@@ -1,3 +1,4 @@
+.DEFAULT_GOAL := all
 FUNC := g++
 copt := -c 
 output :=-o 
@@ -16,11 +17,14 @@ endif
 ifeq ($(EXACT_TRIG),1)
 QUALITY_FLAGS += -DRAY_EXACT_TRIG
 endif
-FLAGS := -O3 -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
+FLAGS := -O3 -flto -DNDEBUG -MMD -MP $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
 OBJ_DIR :=./
 
 CPP_FILES := $(wildcard *.cpp)
 OBJ_FILES := $(addprefix $(OBJ_DIR),$(notdir $(CPP_FILES:.cpp=.obj)))
+DEP_FILES := $(OBJ_FILES:.obj=.d)
+
+-include $(DEP_FILES)
 
 all: $(OBJ_FILES)
 
@@ -43,4 +47,4 @@ $(OBJ_DIR)functiontexture.obj: functiontexture.cpp functiontexture.h $(OBJ_DIR)t
 	$(FUNC) $(output)$(OBJ_DIR)functiontexture.obj $(copt) functiontexture.cpp $(FLAGS)
 
 clean:
-	rm -f $(OBJ_DIR)*.obj
+	rm -f $(OBJ_DIR)*.obj $(OBJ_DIR)*.d
