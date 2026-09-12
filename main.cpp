@@ -13,6 +13,9 @@
 #include<stdlib.h>
 #include <string.h>
 #include <iostream>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 using namespace std;
 
 #include <sys/time.h>
@@ -52,7 +55,11 @@ inline void renderPixel(Autonoma* c, int n) {
 
 void refresh(Autonoma* c){
    const int pixelCount = H * W;
-   if (pixelCount < 65536) {
+   int workerCount = 1;
+#ifdef _OPENMP
+   workerCount = omp_get_max_threads();
+#endif
+   if (workerCount == 1 || pixelCount < 65536) {
       for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
    } else if (c->boundedShapes.size() >= 256) {
 #pragma omp parallel for schedule(static)
