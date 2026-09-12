@@ -23,6 +23,6 @@ class Shape{
    virtual bool getBounds(double boundsMin[3], double boundsMax[3]) const;
 };
 
-void calcColor(unsigned char* toFill, Autonoma*, Ray ray, unsigned int depth);
+void calcColor(unsigned char* toFill, Autonoma*, const Ray& ray, unsigned int depth);
 
 #endif

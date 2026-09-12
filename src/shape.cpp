@@ -37,7 +37,7 @@ void Shape::setRoll(double c){
    zsin = sin(roll);
 }
 
-void calcColor(unsigned char* toFill,Autonoma* c, Ray ray, unsigned int depth){
+void calcColor(unsigned char* toFill,Autonoma* c, const Ray& ray, unsigned int depth){
    double curTime = inf;
    Shape* curShape = c->closestIntersection(ray, curTime);
    if (curShape == NULL) {
