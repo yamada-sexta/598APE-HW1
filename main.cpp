@@ -45,8 +45,9 @@ void set(int i, int j, unsigned char r, unsigned char g, unsigned char b){
    DATA[3*(i+j*W)+2] = b; 
 }
 
+static bool geomDirty = true;
 void refresh(Autonoma* c){
-   c->rebuild();
+   if(geomDirty){ c->rebuild(); geomDirty = false; }
    #pragma omp parallel for schedule(dynamic, 16)
    for(int n = 0; n<H*W; ++n)
    {
@@ -405,6 +406,7 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                node = node->next;
             }
             Shape* shape = node->data;
+            geomDirty = true;
 
             if (streq(field_type, "yaw")) {
                shape->setYaw(result);
