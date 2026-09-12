@@ -37,46 +37,47 @@ int W = 1000, H = 1000;
 
 unsigned char* DATA = NULL;
 unsigned char get(int i, int j, int k){
-   return DATA[3*(i+j*W)+k]; 
+   return DATA[3*((size_t)i+(size_t)j*(size_t)W)+(size_t)k];
 }
 unsigned char* getPos(int i, int j){
-   return &DATA[3*(i+j*W)]; 
+   return &DATA[3*((size_t)i+(size_t)j*(size_t)W)];
 }
 void set(int i, int j, unsigned char r, unsigned char g, unsigned char b){
-   DATA[3*(i+j*W)] = r; 
-   DATA[3*(i+j*W)+1] = g; 
-   DATA[3*(i+j*W)+2] = b; 
+   const size_t pixel = (size_t)i + (size_t)j * (size_t)W;
+   DATA[3*pixel] = r;
+   DATA[3*pixel+1] = g;
+   DATA[3*pixel+2] = b;
 }
 
-inline void renderPixel(Autonoma* c, int n) {
+inline void renderPixel(Autonoma* c, size_t n) {
    Vector ra = c->camera.forward+((double)(n%W)/W-.5)*((c->camera.right))+(.5-(double)(n/W)/H)*((c->camera.up));
    calcColor(&DATA[3*n], c, Ray(c->camera.focus, ra), 0);
 }
 
 void refresh(Autonoma* c){
-   const int pixelCount = H * W;
+   const size_t pixelCount = (size_t)H * (size_t)W;
    int workerCount = 1;
 #ifdef _OPENMP
    workerCount = omp_get_max_threads();
 #endif
    if (workerCount == 1 || pixelCount < 65536) {
-      for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
+      for (size_t n = 0; n < pixelCount; ++n) renderPixel(c, n);
    } else if (c->boundedShapes.size() >= 256) {
 #pragma omp parallel for schedule(static)
-      for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
+      for (long long n = 0; n < (long long)pixelCount; ++n) renderPixel(c, (size_t)n);
    } else {
 #pragma omp parallel for schedule(dynamic, 16)
-      for (int n = 0; n < pixelCount; ++n) renderPixel(c, n);
+      for (long long n = 0; n < (long long)pixelCount; ++n) renderPixel(c, (size_t)n);
    }
 }
 
 void outputPPM(FILE* f){
    fprintf(f, "P6 %d %d 255 ", W, H);
-   fwrite(DATA, 1, W*H * 3, f);
+   fwrite(DATA, 1, (size_t)W * (size_t)H * 3, f);
 }
 
 void outputPPM(char* file){
-   FILE* f = fopen(file, "w");
+   FILE* f = fopen(file, "wb");
    outputPPM(f);
    fclose(f);
 }
