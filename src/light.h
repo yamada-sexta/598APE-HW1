@@ -60,6 +60,7 @@ private:
    int buildBVHNode(size_t start, size_t end);
 };
 
-void getLight(double* toFill, Autonoma* aut, Vector point, Vector norm, unsigned char r);
+void getLight(double* toFill, Autonoma* aut, Vector point, Vector norm, unsigned char r,
+              unsigned int depth);
 
 #endif

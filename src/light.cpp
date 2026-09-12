@@ -323,7 +323,8 @@ bool Autonoma::lightIntersection(const Ray& ray, double* fill) const {
    return false;
 }
 
-void getLight(double* tColor, Autonoma* aut, Vector point, Vector norm, unsigned char flip){
+void getLight(double* tColor, Autonoma* aut, Vector point, Vector norm, unsigned char flip,
+              unsigned int depth){
    tColor[0] = tColor[1] = tColor[2] = 0.;
    LightNode *t = aut->lightStart;
    while(t!=NULL){
@@ -332,7 +333,7 @@ void getLight(double* tColor, Autonoma* aut, Vector point, Vector norm, unsigned
       lightColor[1] = t->data->color[1]/255.;
       lightColor[2] = t->data->color[2]/255.;
       Vector ra = t->data->center-point;
-      const bool hit = aut->lightIntersection(Ray(point+ra*.01, ra), lightColor);
+      const bool hit = depth == 0 && aut->lightIntersection(Ray(point+ra*.01, ra), lightColor);
       double perc = norm.dot(ra) / ra.mag();
       if(!hit){
       if(flip && perc<0) perc=-perc;
