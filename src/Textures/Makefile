@@ -5,6 +5,7 @@ output :=-o
 NATIVE ?= 0
 OPENMP ?= 1
 EXACT_TRIG ?= 0
+OPT ?= 3
 ARCH_FLAGS :=
 THREAD_FLAGS :=
 QUALITY_FLAGS :=
@@ -17,7 +18,7 @@ endif
 ifeq ($(EXACT_TRIG),1)
 QUALITY_FLAGS += -DRAY_EXACT_TRIG
 endif
-FLAGS := -O3 -flto -DNDEBUG -MMD -MP $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
+FLAGS := -O$(OPT) -flto -DNDEBUG -MMD -MP $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
 OBJ_DIR :=./
 
 CPP_FILES := $(wildcard *.cpp)

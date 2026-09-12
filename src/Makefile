@@ -7,6 +7,7 @@ OBJ_DIR := ./
 NATIVE ?= 0
 OPENMP ?= 1
 EXACT_TRIG ?= 0
+OPT ?= 3
 ARCH_FLAGS :=
 THREAD_FLAGS :=
 QUALITY_FLAGS :=
@@ -19,7 +20,7 @@ endif
 ifeq ($(EXACT_TRIG),1)
 QUALITY_FLAGS += -DRAY_EXACT_TRIG
 endif
-FLAGS := -O3 -flto -DNDEBUG -MMD -MP $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
+FLAGS := -O$(OPT) -flto -DNDEBUG -MMD -MP $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -g -Werror
 
 CPP_FILES := $(wildcard *.cpp)
 OBJ_FILES := $(addprefix $(OBJ_DIR),$(notdir $(CPP_FILES:.cpp=.obj)))
