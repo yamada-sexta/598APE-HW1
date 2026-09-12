@@ -42,6 +42,10 @@ void calcColor(unsigned char* toFill,Autonoma* c, Ray ray, unsigned int depth){
    Shape* curShape = c->closestIntersection(ray, curTime);
    if (curShape == NULL) {
       double opacity, reflection, ambient;
+      if (c->skybox->isUniform()) {
+         c->skybox->getColor(toFill, &ambient, &opacity, &reflection, 0.0, 0.0);
+         return;
+      }
       Vector temp = ray.vector.normalize();
       const double x = temp.x;
       const double z = temp.z;

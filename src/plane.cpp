@@ -102,6 +102,10 @@ void Plane::move(){
    d = -vect.dot(center);
 }
 void Plane::getColor(unsigned char* toFill,double* am, double* op, double* ref, Autonoma* r, Ray ray, unsigned int depth){
+   if (texture->isUniform()) {
+      texture->getColor(toFill, am, op, ref, 0.0, 0.0);
+      return;
+   }
    Vector dist = solveScalers(right, up, vect, ray.point-center);
    texture->getColor(toFill, am, op, ref, fix(dist.x/textureX-.5), fix(dist.y/textureY-.5));
 }
