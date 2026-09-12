@@ -6,8 +6,8 @@ class Box : public Plane{
 public:
   Box(const Vector &c, Texture* t, double ya, double pi, double ro, double tx, double ty);
   Box(const Vector &c, Texture* t, double ya, double pi, double ro, double tx);
-  double getIntersection(Ray ray);
-  bool getLightIntersection(Ray ray, double* fill);
+  double getIntersection(const Ray& ray);
+  bool getLightIntersection(const Ray& ray, double* fill);
   bool getBounds(double boundsMin[3], double boundsMax[3]) const;
 };
 

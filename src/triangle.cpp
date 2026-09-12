@@ -54,12 +54,12 @@ bool Triangle::getBounds(double outMin[3], double outMax[3]) const {
    return true;
 }
 
-double Triangle::getIntersection(Ray ray){
+double Triangle::getIntersection(const Ray& ray){
    double time, u, v;
    return intersect(ray, time, u, v) ? time : inf;
 }
 
-bool Triangle::getLightIntersection(Ray ray, double* fill){
+bool Triangle::getLightIntersection(const Ray& ray, double* fill){
    double time, u, v;
    if (!intersect(ray, time, u, v) || time >= 1.0) return false;
    if(texture->opacity>1-1E-6) return true;   

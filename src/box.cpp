@@ -3,7 +3,7 @@
 Box::Box(const Vector &c, Texture* t, double ya, double pi, double ro, double tx, double ty):Plane(c, t, ya, pi, ro, tx, ty){}
 Box::Box(const Vector &c, Texture* t, double ya, double pi, double ro, double tx):Plane(c, t, ya, pi, ro, tx,tx){}
 
-double Box::getIntersection(Ray ray){
+double Box::getIntersection(const Ray& ray){
    double time = Plane::getIntersection(ray);
    if(time==inf) 
       return time;
@@ -11,7 +11,7 @@ double Box::getIntersection(Ray ray){
    return ( ((dist.x>=0)?dist.x:-dist.x)>textureX/2 || ((dist.y>=0)?dist.y:-dist.y)>textureY/2 )?inf:time;
 }
 
-bool Box::getLightIntersection(Ray ray, double* fill){
+bool Box::getLightIntersection(const Ray& ray, double* fill){
    const double t = ray.vector.dot(vect);
    const double norm = vect.dot(ray.point)+d;
    const double r = -norm/t;
