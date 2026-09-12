@@ -1,6 +1,7 @@
 #include "shape.h"
 
 Shape::Shape(const Vector &c, Texture* t, double ya, double pi, double ro): center(c), texture(t), yaw(ya), pitch(pi), roll(ro){
+   triangle = false;
 };
 
 bool Shape::getBounds(double boundsMin[3], double boundsMax[3]) const {

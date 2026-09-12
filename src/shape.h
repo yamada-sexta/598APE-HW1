@@ -10,6 +10,7 @@ class Shape{
    Texture* texture;
    double textureX, textureY, mapX, mapY, mapOffX, mapOffY;
    Texture* normalMap;
+   bool triangle;
    virtual double getIntersection(const Ray& ray) = 0;
    virtual bool getLightIntersection(const Ray& ray, double* fill) = 0;
    virtual void move() = 0;

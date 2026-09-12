@@ -2,6 +2,7 @@
 #include <algorithm>
 
 Triangle::Triangle(Vector c, Vector b, Vector a, Texture* t):Plane(Vector(0,0,0), t, 0., 0., 0., 0., 0.), vertex(c), edge1(b-c), edge2(a-c){
+   triangle = true;
    const double epsilon = 1e-9;
    boundsMin[0] = std::min(c.x, std::min(b.x, a.x)) - epsilon;
    boundsMin[1] = std::min(c.y, std::min(b.y, a.y)) - epsilon;

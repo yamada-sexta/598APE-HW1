@@ -31,6 +31,15 @@ struct BVHPrimitive {
    double boundsMin[3], boundsMax[3], centroid[3];
 };
 
+struct alignas(64) TrianglePacket {
+   double vertexX[8], vertexY[8], vertexZ[8];
+   double edge1X[8], edge1Y[8], edge1Z[8];
+   double edge2X[8], edge2Y[8], edge2Z[8];
+   Shape* shapes[8];
+   size_t count;
+   bool opaque;
+};
+
 struct BVHNode {
    double boundsMin[3], boundsMax[3];
    int left, right;
@@ -47,6 +56,7 @@ public:
    std::vector<BVHPrimitive> boundedShapes;
    std::vector<Shape*> unboundedShapes;
    std::vector<BVHNode> bvhNodes;
+   std::vector<TrianglePacket> trianglePackets;
    Autonoma(const Camera &c);
    Autonoma(const Camera &c, Texture* tex);
    void addShape(Shape* s);
