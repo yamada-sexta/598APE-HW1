@@ -77,7 +77,7 @@ public:
    return Vector(a/b.x,a/b.y,a/b.z);
   }
   
-  Vector solveScalers(Vector v1, Vector v2, Vector v3, Vector solve);
+  Vector solveScalers(const Vector& v1, const Vector& v2, const Vector& v3, const Vector& solve);
 
 int print_vector(FILE *stream, const struct printf_info *info, const void 
 *const *args);
