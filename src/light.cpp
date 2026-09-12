@@ -188,27 +188,110 @@ int Autonoma::buildBVHNode(size_t start, size_t end) {
    bvhNodes.push_back(node);
    if (node.count <= 4) return nodeIndex;
 
-   int splitAxis = 0;
-   double widest = -1.0;
+   double centroidMin[3] = {inf, inf, inf};
+   double centroidMax[3] = {-inf, -inf, -inf};
    for (int axis = 0; axis < 3; ++axis) {
-      double centroidMin = std::numeric_limits<double>::infinity();
-      double centroidMax = -std::numeric_limits<double>::infinity();
       for (size_t index = start; index < end; ++index) {
-         centroidMin = std::min(centroidMin, boundedShapes[index].centroid[axis]);
-         centroidMax = std::max(centroidMax, boundedShapes[index].centroid[axis]);
-      }
-      if (centroidMax - centroidMin > widest) {
-         widest = centroidMax - centroidMin;
-         splitAxis = axis;
+         centroidMin[axis] = std::min(centroidMin[axis], boundedShapes[index].centroid[axis]);
+         centroidMax[axis] = std::max(centroidMax[axis], boundedShapes[index].centroid[axis]);
       }
    }
 
-   const size_t middle = start + (end - start) / 2;
-   std::nth_element(boundedShapes.begin() + start, boundedShapes.begin() + middle,
-                    boundedShapes.begin() + end,
-                    [splitAxis](const BVHPrimitive& first, const BVHPrimitive& second) {
-                       return first.centroid[splitAxis] < second.centroid[splitAxis];
-                    });
+   const int binCount = 12;
+   int bestAxis = -1, bestBin = -1;
+   double bestCost = inf;
+   for (int axis = 0; axis < 3; ++axis) {
+      const double extent = centroidMax[axis] - centroidMin[axis];
+      if (extent <= 1e-15) continue;
+      struct Bin {
+         size_t count;
+         double minimum[3], maximum[3];
+      } bins[binCount];
+      for (int bin = 0; bin < binCount; ++bin) {
+         bins[bin].count = 0;
+         for (int component = 0; component < 3; ++component) {
+            bins[bin].minimum[component] = inf;
+            bins[bin].maximum[component] = -inf;
+         }
+      }
+      const double scale = binCount / extent;
+      for (size_t index = start; index < end; ++index) {
+         int bin = (int)((boundedShapes[index].centroid[axis] - centroidMin[axis]) * scale);
+         if (bin >= binCount) bin = binCount - 1;
+         ++bins[bin].count;
+         for (int component = 0; component < 3; ++component) {
+            bins[bin].minimum[component] = std::min(bins[bin].minimum[component], boundedShapes[index].boundsMin[component]);
+            bins[bin].maximum[component] = std::max(bins[bin].maximum[component], boundedShapes[index].boundsMax[component]);
+         }
+      }
+
+      size_t leftCount[binCount - 1], rightCount[binCount - 1];
+      double leftArea[binCount - 1], rightArea[binCount - 1];
+      double minimum[3] = {inf, inf, inf};
+      double maximum[3] = {-inf, -inf, -inf};
+      size_t count = 0;
+      for (int bin = 0; bin < binCount - 1; ++bin) {
+         count += bins[bin].count;
+         for (int component = 0; component < 3; ++component) {
+            minimum[component] = std::min(minimum[component], bins[bin].minimum[component]);
+            maximum[component] = std::max(maximum[component], bins[bin].maximum[component]);
+         }
+         const double x = maximum[0] - minimum[0];
+         const double y = maximum[1] - minimum[1];
+         const double z = maximum[2] - minimum[2];
+         leftCount[bin] = count;
+         leftArea[bin] = 2.0 * (x*y + x*z + y*z);
+      }
+      minimum[0] = minimum[1] = minimum[2] = inf;
+      maximum[0] = maximum[1] = maximum[2] = -inf;
+      count = 0;
+      for (int bin = binCount - 1; bin > 0; --bin) {
+         count += bins[bin].count;
+         for (int component = 0; component < 3; ++component) {
+            minimum[component] = std::min(minimum[component], bins[bin].minimum[component]);
+            maximum[component] = std::max(maximum[component], bins[bin].maximum[component]);
+         }
+         const double x = maximum[0] - minimum[0];
+         const double y = maximum[1] - minimum[1];
+         const double z = maximum[2] - minimum[2];
+         rightCount[bin - 1] = count;
+         rightArea[bin - 1] = 2.0 * (x*y + x*z + y*z);
+      }
+      for (int bin = 0; bin < binCount - 1; ++bin) {
+         if (leftCount[bin] == 0 || rightCount[bin] == 0) continue;
+         const double cost = leftCount[bin] * leftArea[bin] + rightCount[bin] * rightArea[bin];
+         if (cost < bestCost) {
+            bestCost = cost;
+            bestAxis = axis;
+            bestBin = bin;
+         }
+      }
+   }
+
+   size_t middle;
+   if (bestAxis >= 0) {
+      const double split = centroidMin[bestAxis] +
+         (centroidMax[bestAxis] - centroidMin[bestAxis]) * (bestBin + 1) / binCount;
+      std::vector<BVHPrimitive>::iterator middleIterator =
+         std::partition(boundedShapes.begin() + start, boundedShapes.begin() + end,
+                        [bestAxis, split](const BVHPrimitive& primitive) {
+                           return primitive.centroid[bestAxis] < split;
+                        });
+      middle = middleIterator - boundedShapes.begin();
+   } else {
+      middle = start;
+   }
+   if (middle == start || middle == end) {
+      int splitAxis = 0;
+      if (centroidMax[1] - centroidMin[1] > centroidMax[splitAxis] - centroidMin[splitAxis]) splitAxis = 1;
+      if (centroidMax[2] - centroidMin[2] > centroidMax[splitAxis] - centroidMin[splitAxis]) splitAxis = 2;
+      middle = start + (end - start) / 2;
+      std::nth_element(boundedShapes.begin() + start, boundedShapes.begin() + middle,
+                       boundedShapes.begin() + end,
+                       [splitAxis](const BVHPrimitive& first, const BVHPrimitive& second) {
+                          return first.centroid[splitAxis] < second.centroid[splitAxis];
+                       });
+   }
    const int left = buildBVHNode(start, middle);
    const int right = buildBVHNode(middle, end);
    bvhNodes[nodeIndex].left = left;
