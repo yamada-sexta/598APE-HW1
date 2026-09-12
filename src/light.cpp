@@ -118,6 +118,7 @@ void Autonoma::removeLight(LightNode* s){
 typedef int (*TrianglePacketFunction)(const TrianglePacket&, const Ray&, double, double&);
 static TrianglePacketFunction trianglePacketFunction = NULL;
 static size_t trianglePacketWidth = 4;
+static size_t triangleLeafSize = 4;
 static const char* triangleSIMDName = "scalar";
 
 #if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
@@ -172,6 +173,7 @@ DEFINE_TRIANGLE_PACKET(intersectTriangleAVX512, "avx512f", RayVec8d, 8)
 static void selectTriangleSIMD(size_t primitiveCount) {
    trianglePacketFunction = NULL;
    trianglePacketWidth = 4;
+   triangleLeafSize = 4;
    triangleSIMDName = "scalar";
    const char* requested = std::getenv("RAY_SIMD");
    __builtin_cpu_init();
@@ -184,29 +186,39 @@ static void selectTriangleSIMD(size_t primitiveCount) {
    if (!preferScalar && (automatic || std::strcmp(requested, "avx512") == 0) && __builtin_cpu_supports("avx512f")) {
       trianglePacketFunction = intersectTriangleAVX512;
       trianglePacketWidth = 8;
+      triangleLeafSize = 8;
       triangleSIMDName = "avx512";
    } else if (!preferScalar && (automatic || std::strcmp(requested, "avx2") == 0) && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
       trianglePacketFunction = intersectTriangleAVX2;
       trianglePacketWidth = 4;
+      triangleLeafSize = 4;
       triangleSIMDName = "avx2";
    } else if (!preferScalar && (automatic || std::strcmp(requested, "avx") == 0) && __builtin_cpu_supports("avx")) {
       trianglePacketFunction = intersectTriangleAVX;
       trianglePacketWidth = 4;
+      triangleLeafSize = 4;
       triangleSIMDName = "avx";
    } else if (!preferScalar && (automatic || std::strcmp(requested, "sse2") == 0) && __builtin_cpu_supports("sse2")) {
       trianglePacketFunction = intersectTriangleSSE2;
       trianglePacketWidth = 2;
+      triangleLeafSize = 2;
       triangleSIMDName = "sse2";
    }
+   const char* forcedLeafSize = std::getenv("RAY_PACKET_SIZE");
+   if (trianglePacketFunction != NULL && forcedLeafSize != NULL) {
+      const long value = std::strtol(forcedLeafSize, NULL, 10);
+      if (value >= 1 && (size_t)value <= trianglePacketWidth) triangleLeafSize = (size_t)value;
+   }
    if (std::getenv("RAY_SIMD_REPORT") != NULL)
-      std::fprintf(stderr, "triangle SIMD: %s (primitives=%zu workers=%d)\n",
-                   triangleSIMDName, primitiveCount, workers);
+      std::fprintf(stderr, "triangle SIMD: %s (lanes=%zu leaf=%zu primitives=%zu workers=%d)\n",
+                   triangleSIMDName, trianglePacketWidth, triangleLeafSize, primitiveCount, workers);
 }
 #else
 static void selectTriangleSIMD(size_t primitiveCount) {
    (void)primitiveCount;
    trianglePacketFunction = NULL;
    trianglePacketWidth = 4;
+   triangleLeafSize = 4;
    triangleSIMDName = "scalar";
    if (std::getenv("RAY_SIMD_REPORT") != NULL)
       std::fprintf(stderr, "triangle SIMD: scalar (non-x86 build)\n");
@@ -274,8 +286,8 @@ void Autonoma::buildAcceleration() {
    if (!boundedShapes.empty()) {
       bvhNodes.reserve(boundedShapes.size() * 2);
       if (trianglePacketFunction != NULL)
-         trianglePackets.reserve((boundedShapes.size() + trianglePacketWidth - 1) /
-                                 trianglePacketWidth);
+         trianglePackets.reserve((boundedShapes.size() + triangleLeafSize - 1) /
+                                 triangleLeafSize);
       buildBVHNode(0, boundedShapes.size());
    }
 }
@@ -301,7 +313,7 @@ int Autonoma::buildBVHNode(size_t start, size_t end) {
    bool allTriangles = trianglePacketFunction != NULL;
    if (trianglePacketFunction != NULL) {
       for (size_t index = start; index < end; ++index) allTriangles &= boundedShapes[index].shape->triangle;
-      if (allTriangles) leafLimit = trianglePacketWidth;
+      if (allTriangles) leafLimit = triangleLeafSize;
    }
    if (node.count <= leafLimit) {
       if (allTriangles) {
