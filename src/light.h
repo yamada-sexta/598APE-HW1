@@ -4,6 +4,8 @@
 #include "camera.h"
 #include "Textures/texture.h"
 #include "Textures/colortexture.h"
+#include <cstddef>
+#include <vector>
 
 class Light{
   public:
@@ -24,6 +26,17 @@ struct ShapeNode{
    ShapeNode* prev, *next;
 };
 
+struct BVHPrimitive {
+   Shape* shape;
+   double boundsMin[3], boundsMax[3], centroid[3];
+};
+
+struct BVHNode {
+   double boundsMin[3], boundsMax[3];
+   int left, right;
+   size_t start, count;
+};
+
 class Autonoma{
 public:
    Camera camera;
@@ -31,12 +44,20 @@ public:
    unsigned int depth;
    ShapeNode *listStart, *listEnd;
    LightNode *lightStart, *lightEnd;
+   std::vector<BVHPrimitive> boundedShapes;
+   std::vector<Shape*> unboundedShapes;
+   std::vector<BVHNode> bvhNodes;
    Autonoma(const Camera &c);
    Autonoma(const Camera &c, Texture* tex);
    void addShape(Shape* s);
    void removeShape(ShapeNode* s);
    void addLight(Light* s);
    void removeLight(LightNode* s);
+   void buildAcceleration();
+   Shape* closestIntersection(const Ray& ray, double& closest) const;
+   bool lightIntersection(const Ray& ray, double* fill) const;
+private:
+   int buildBVHNode(size_t start, size_t end);
 };
 
 void getLight(double* toFill, Autonoma* aut, Vector point, Vector norm, unsigned char r);

@@ -3,6 +3,12 @@
 Shape::Shape(const Vector &c, Texture* t, double ya, double pi, double ro): center(c), texture(t), yaw(ya), pitch(pi), roll(ro){
 };
 
+bool Shape::getBounds(double boundsMin[3], double boundsMax[3]) const {
+   (void)boundsMin;
+   (void)boundsMax;
+   return false;
+}
+
 void Shape::setAngles(double a, double b, double c){
    yaw =a; pitch = b; roll = c;
    xcos = cos(yaw);
@@ -32,17 +38,8 @@ void Shape::setRoll(double c){
 }
 
 void calcColor(unsigned char* toFill,Autonoma* c, Ray ray, unsigned int depth){
-   ShapeNode* node = c->listStart;
    double curTime = inf;
-   Shape* curShape = NULL;
-   while (node != NULL) {
-      const double time = node->data->getIntersection(ray);
-      if (time < curTime) {
-         curTime = time;
-         curShape = node->data;
-      }
-      node = node->next;
-   }
+   Shape* curShape = c->closestIntersection(ray, curTime);
    if (curShape == NULL) {
       double opacity, reflection, ambient;
       Vector temp = ray.vector.normalize();

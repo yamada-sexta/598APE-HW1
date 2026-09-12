@@ -541,6 +541,7 @@ int main(int argc, const char** argv){
    }
 
    Autonoma* MAIN_DATA = createInputs(inFile);
+   MAIN_DATA->buildAcceleration();
    
    int frame;
    char command[200];

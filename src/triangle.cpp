@@ -1,6 +1,14 @@
 #include "triangle.h"
+#include <algorithm>
 
 Triangle::Triangle(Vector c, Vector b, Vector a, Texture* t):Plane(Vector(0,0,0), t, 0., 0., 0., 0., 0.){
+   const double epsilon = 1e-9;
+   boundsMin[0] = std::min(c.x, std::min(b.x, a.x)) - epsilon;
+   boundsMin[1] = std::min(c.y, std::min(b.y, a.y)) - epsilon;
+   boundsMin[2] = std::min(c.z, std::min(b.z, a.z)) - epsilon;
+   boundsMax[0] = std::max(c.x, std::max(b.x, a.x)) + epsilon;
+   boundsMax[1] = std::max(c.y, std::max(b.y, a.y)) + epsilon;
+   boundsMax[2] = std::max(c.z, std::max(b.z, a.z)) + epsilon;
    center = c;
    Vector righta = (b-c);
    textureX = righta.mag();
@@ -36,6 +44,14 @@ Triangle::Triangle(Vector c, Vector b, Vector a, Texture* t):Plane(Vector(0,0,0)
    thirdX = np.x;
    
    d = -vect.dot(center);
+}
+
+bool Triangle::getBounds(double outMin[3], double outMax[3]) const {
+   for (int axis = 0; axis < 3; ++axis) {
+      outMin[axis] = boundsMin[axis];
+      outMax[axis] = boundsMax[axis];
+   }
+   return true;
 }
 
 double Triangle::getIntersection(Ray ray){
