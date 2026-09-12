@@ -108,25 +108,33 @@ void Autonoma::removeLight(LightNode* s){
    free(s);
 }
 
-static double component(const Vector& vector, int axis) {
-   if (axis == 0) return vector.x;
-   if (axis == 1) return vector.y;
-   return vector.z;
-}
+struct PreparedRay {
+   double origin[3], inverseDirection[3];
+   bool parallel[3];
 
-static bool intersectsBounds(const BVHNode& node, const Ray& ray,
+   PreparedRay(const Ray& ray) {
+      origin[0] = ray.point.x;
+      origin[1] = ray.point.y;
+      origin[2] = ray.point.z;
+      const double direction[3] = {ray.vector.x, ray.vector.y, ray.vector.z};
+      for (int axis = 0; axis < 3; ++axis) {
+         parallel[axis] = std::abs(direction[axis]) < 1e-15;
+         inverseDirection[axis] = parallel[axis] ? 0.0 : 1.0 / direction[axis];
+      }
+   }
+};
+
+static bool intersectsBounds(const BVHNode& node, const PreparedRay& ray,
                              double maximum, double* nearDistance = NULL) {
    double near = 0.0;
    double far = maximum;
    for (int axis = 0; axis < 3; ++axis) {
-      const double origin = component(ray.point, axis);
-      const double direction = component(ray.vector, axis);
-      if (std::abs(direction) < 1e-15) {
-         if (origin < node.boundsMin[axis] || origin > node.boundsMax[axis]) return false;
+      if (ray.parallel[axis]) {
+         if (ray.origin[axis] < node.boundsMin[axis] || ray.origin[axis] > node.boundsMax[axis]) return false;
          continue;
       }
-      double first = (node.boundsMin[axis] - origin) / direction;
-      double second = (node.boundsMax[axis] - origin) / direction;
+      double first = (node.boundsMin[axis] - ray.origin[axis]) * ray.inverseDirection[axis];
+      double second = (node.boundsMax[axis] - ray.origin[axis]) * ray.inverseDirection[axis];
       if (first > second) std::swap(first, second);
       if (first > near) near = first;
       if (second < far) far = second;
@@ -220,12 +228,18 @@ Shape* Autonoma::closestIntersection(const Ray& ray, double& closest) const {
    }
 
    if (bvhNodes.empty()) return closestShape;
-   int stack[128];
+   const PreparedRay preparedRay(ray);
+   int nodeStack[128];
+   double nearStack[128];
    int stackSize = 0;
-   stack[stackSize++] = 0;
+   double rootNear;
+   if (!intersectsBounds(bvhNodes[0], preparedRay, closest, &rootNear)) return closestShape;
+   nodeStack[stackSize] = 0;
+   nearStack[stackSize++] = rootNear;
    while (stackSize != 0) {
-      const BVHNode& node = bvhNodes[stack[--stackSize]];
-      if (!intersectsBounds(node, ray, closest)) continue;
+      --stackSize;
+      if (nearStack[stackSize] > closest) continue;
+      const BVHNode& node = bvhNodes[nodeStack[stackSize]];
       if (node.count != 0) {
          const size_t end = node.start + node.count;
          for (size_t index = node.start; index < end; ++index) {
@@ -239,20 +253,26 @@ Shape* Autonoma::closestIntersection(const Ray& ray, double& closest) const {
       }
 
       double leftNear, rightNear;
-      const bool hitLeft = intersectsBounds(bvhNodes[node.left], ray, closest, &leftNear);
-      const bool hitRight = intersectsBounds(bvhNodes[node.right], ray, closest, &rightNear);
+      const bool hitLeft = intersectsBounds(bvhNodes[node.left], preparedRay, closest, &leftNear);
+      const bool hitRight = intersectsBounds(bvhNodes[node.right], preparedRay, closest, &rightNear);
       if (hitLeft && hitRight) {
          if (leftNear < rightNear) {
-            stack[stackSize++] = node.right;
-            stack[stackSize++] = node.left;
+            nodeStack[stackSize] = node.right;
+            nearStack[stackSize++] = rightNear;
+            nodeStack[stackSize] = node.left;
+            nearStack[stackSize++] = leftNear;
          } else {
-            stack[stackSize++] = node.left;
-            stack[stackSize++] = node.right;
+            nodeStack[stackSize] = node.left;
+            nearStack[stackSize++] = leftNear;
+            nodeStack[stackSize] = node.right;
+            nearStack[stackSize++] = rightNear;
          }
       } else if (hitLeft) {
-         stack[stackSize++] = node.left;
+         nodeStack[stackSize] = node.left;
+         nearStack[stackSize++] = leftNear;
       } else if (hitRight) {
-         stack[stackSize++] = node.right;
+         nodeStack[stackSize] = node.right;
+         nearStack[stackSize++] = rightNear;
       }
    }
    return closestShape;
@@ -264,20 +284,40 @@ bool Autonoma::lightIntersection(const Ray& ray, double* fill) const {
    }
 
    if (bvhNodes.empty()) return false;
-   int stack[128];
+   const PreparedRay preparedRay(ray);
+   int nodeStack[128];
    int stackSize = 0;
-   stack[stackSize++] = 0;
+   if (!intersectsBounds(bvhNodes[0], preparedRay, 1.0)) return false;
+   nodeStack[stackSize++] = 0;
    while (stackSize != 0) {
-      const BVHNode& node = bvhNodes[stack[--stackSize]];
-      if (!intersectsBounds(node, ray, 1.0)) continue;
+      --stackSize;
+      const BVHNode& node = bvhNodes[nodeStack[stackSize]];
       if (node.count != 0) {
          const size_t end = node.start + node.count;
          for (size_t index = node.start; index < end; ++index) {
             if (boundedShapes[index].shape->getLightIntersection(ray, fill)) return true;
          }
       } else {
-         stack[stackSize++] = node.left;
-         stack[stackSize++] = node.right;
+         double leftNear, rightNear;
+         const bool hitLeft = intersectsBounds(bvhNodes[node.left], preparedRay, 1.0, &leftNear);
+         const bool hitRight = intersectsBounds(bvhNodes[node.right], preparedRay, 1.0, &rightNear);
+         if (hitLeft && hitRight) {
+            if (leftNear < rightNear) {
+               nodeStack[stackSize] = node.right;
+               ++stackSize;
+               nodeStack[stackSize] = node.left;
+               ++stackSize;
+            } else {
+               nodeStack[stackSize] = node.left;
+               ++stackSize;
+               nodeStack[stackSize] = node.right;
+               ++stackSize;
+            }
+         } else if (hitLeft) {
+            nodeStack[stackSize++] = node.left;
+         } else if (hitRight) {
+            nodeStack[stackSize++] = node.right;
+         }
       }
    }
    return false;
