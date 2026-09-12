@@ -11,6 +11,7 @@ public:
   bool getLightIntersection(Ray ray, double* fill);
   void getColor(unsigned char* toFill, double* am, double* op, double* ref, Autonoma* r, Ray ray, unsigned int depth);
   Vector getNormal(Vector point);
+  bool getBounds(Vector& lo, Vector& hi);
   unsigned char reversible();
   void setAngles(double a, double b, double c);
   void setYaw(double a);

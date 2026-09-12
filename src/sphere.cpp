@@ -111,3 +111,8 @@ void Sphere::setRoll(double c){
    zcos = cos(roll);
    zsin = sin(roll);
 }
+bool Sphere::getBounds(Vector& lo, Vector& hi){
+   lo = Vector(center.x-radius, center.y-radius, center.z-radius);
+   hi = Vector(center.x+radius, center.y+radius, center.z+radius);
+   return true;
+}

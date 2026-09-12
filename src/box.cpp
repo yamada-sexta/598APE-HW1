@@ -29,3 +29,11 @@ bool Box::getLightIntersection(Ray ray, double* fill){
    fill[2]*=temp[2]/255.;
    return false;
 }
+bool Box::getBounds(Vector& lo, Vector& hi){
+   double ex = fabs(right.x)*textureX/2 + fabs(up.x)*textureY/2;
+   double ey = fabs(right.y)*textureX/2 + fabs(up.y)*textureY/2;
+   double ez = fabs(right.z)*textureX/2 + fabs(up.z)*textureY/2;
+   lo = Vector(center.x-ex, center.y-ey, center.z-ez);
+   hi = Vector(center.x+ex, center.y+ey, center.z+ez);
+   return true;
+}

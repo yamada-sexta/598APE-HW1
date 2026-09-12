@@ -1,5 +1,6 @@
 #include "bvh.h"
 #include "shape.h"
+#include <cmath>
 #include <algorithm>
 
 namespace {
@@ -23,8 +24,10 @@ void BVH::build(const std::vector<Shape*>& shapes){
       if(!s->getBounds(a, b)) continue;
       Item it;
       it.shape = s;
-      it.lo[0]=a.x; it.lo[1]=a.y; it.lo[2]=a.z;
-      it.hi[0]=b.x; it.hi[1]=b.y; it.hi[2]=b.z;
+      double pad[3];
+      pad[0]=1e-6*(1+fabs(b.x-a.x)); pad[1]=1e-6*(1+fabs(b.y-a.y)); pad[2]=1e-6*(1+fabs(b.z-a.z));
+      it.lo[0]=a.x-pad[0]; it.lo[1]=a.y-pad[1]; it.lo[2]=a.z-pad[2];
+      it.hi[0]=b.x+pad[0]; it.hi[1]=b.y+pad[1]; it.hi[2]=b.z+pad[2];
       it.cen[0]=0.5*(a.x+b.x); it.cen[1]=0.5*(a.y+b.y); it.cen[2]=0.5*(a.z+b.z);
       items.push_back(it);
    }
