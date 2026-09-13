@@ -1,0 +1,38 @@
+CXX ?= g++
+CUDA_HOME ?= /usr/local/cuda
+NVCC ?= $(CUDA_HOME)/bin/nvcc
+CUDA_CXX ?= $(shell command -v g++-14 2>/dev/null || command -v g++)
+CUDA_ARCH ?= 86
+NVCCFLAGS ?= -O3 -std=c++17 -lineinfo --use_fast_math
+HOST_SOURCES := $(wildcard src/*.cpp src/Textures/*.cpp)
+HOST_HEADERS := $(wildcard src/*.h src/Textures/*.h)
+BUILD := build/nvidia
+.PHONY: all cpu
+all: $(BUILD)/raytracer
+$(BUILD):
+	mkdir -p $@
+$(BUILD)/renderer.o: gpu/renderer.cu gpu/trace.cuh gpu/types.cuh gpu/renderer.h $(HOST_HEADERS) Makefile.nvidia | $(BUILD)
+	$(NVCC) $(NVCCFLAGS) -ccbin $(CUDA_CXX) -gencode arch=compute_$(CUDA_ARCH),code=sm_$(CUDA_ARCH) -gencode arch=compute_$(CUDA_ARCH),code=compute_$(CUDA_ARCH) -c $< -o $@
+$(BUILD)/raytracer: main.cpp $(HOST_SOURCES) $(HOST_HEADERS) gpu/renderer.h $(BUILD)/renderer.o
+	$(CXX) -O3 -std=c++17 -pthread -DUSE_CUDA main.cpp $(HOST_SOURCES) -I$(CUDA_HOME)/include $(BUILD)/renderer.o -L$(CUDA_HOME)/lib64 -Wl,-rpath,$(CUDA_HOME)/lib64 -lcudart -o $@
+.PHONY: $(BUILD)/cpu-reference $(BUILD)/cpu-optimized
+cpu: $(BUILD)/cpu-reference $(BUILD)/cpu-optimized
+$(BUILD)/cpu-reference:
+	$(MAKE) -f Makefile cpu-build CPU_OUTPUT=$@ CPU_BUILD=$(BUILD)/cpu-reference-build EXACT_TRIG=1 REFERENCE_SHADING=1
+$(BUILD)/cpu-optimized:
+	$(MAKE) -f Makefile cpu-build CPU_OUTPUT=$@
+
+OPTIX_ROOT ?= build/deps/optix-dev
+OPTIX_INCLUDE := $(OPTIX_ROOT)/include
+.PHONY: optix optix-deps
+optix: $(BUILD)/raytracer-optix
+optix-deps:
+	@test -f $(OPTIX_INCLUDE)/optix.h || git clone --depth 1 --branch v9.1.0 https://github.com/NVIDIA/optix-dev.git $(OPTIX_ROOT)
+$(BUILD)/optix_programs.ptx: gpu/optix_programs.cu gpu/trace.cuh gpu/types.cuh gpu/optix_params.h Makefile.nvidia | $(BUILD)
+	$(NVCC) $(NVCCFLAGS) -ccbin $(CUDA_CXX) -I$(OPTIX_INCLUDE) -arch=compute_$(CUDA_ARCH) --ptx $< -o $@
+$(BUILD)/optix_backend.o: gpu/optix_backend.cpp gpu/optix_backend.h gpu/optix_params.h gpu/types.cuh Makefile.nvidia | $(BUILD)
+	$(CXX) -O3 -std=c++17 -I$(OPTIX_INCLUDE) -I$(CUDA_HOME)/include -DOPTIX_PTX_PATH='"$(abspath $(BUILD)/optix_programs.ptx)"' -c $< -o $@
+$(BUILD)/renderer-optix.o: gpu/renderer.cu gpu/trace.cuh gpu/types.cuh gpu/renderer.h gpu/optix_backend.h $(HOST_HEADERS) Makefile.nvidia | $(BUILD)
+	$(NVCC) $(NVCCFLAGS) -DENABLE_OPTIX -ccbin $(CUDA_CXX) -gencode arch=compute_$(CUDA_ARCH),code=sm_$(CUDA_ARCH) -gencode arch=compute_$(CUDA_ARCH),code=compute_$(CUDA_ARCH) -c $< -o $@
+$(BUILD)/raytracer-optix: main.cpp $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/renderer-optix.o $(BUILD)/optix_backend.o $(BUILD)/optix_programs.ptx
+	$(CXX) -O3 -std=c++17 -pthread -DUSE_CUDA main.cpp $(HOST_SOURCES) -I$(CUDA_HOME)/include $(BUILD)/renderer-optix.o $(BUILD)/optix_backend.o -L$(CUDA_HOME)/lib64 -Wl,-rpath,$(CUDA_HOME)/lib64 -lcudart -ldl -o $@

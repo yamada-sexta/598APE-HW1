@@ -82,7 +82,15 @@ Vector Vector::normalize() const {
 
   
 Vector solveScalers(const Vector& v1, const Vector& v2, const Vector& v3, const Vector& value){
+#ifdef USE_CUDA
+   double denom = v1.z*v2.y*v3.x-v1.y*v2.z*v3.x-v1.z*v2.x*v3.y+v1.x*v2.z*v3.y+v1.y*v2.x*v3.z-v1.x*v2.y*v3.z;
+   double a = value.z*v2.y*v3.x-value.y*v2.z*v3.x-value.z*v2.x*v3.y+value.x*v2.z*v3.y+value.y*v2.x*v3.z-value.x*v2.y*v3.z;
+   double b = -value.z*v1.y*v3.x+value.y*v1.z*v3.x+value.z*v1.x*v3.y-value.x*v1.z*v3.y-value.y*v1.x*v3.z+value.x*v1.y*v3.z;
+   double c = value.z*v1.y*v2.x-value.y*v1.z*v2.x-value.z*v1.x*v2.y+value.x*v1.z*v2.y+value.y*v1.x*v2.z-value.x*v1.y*v2.z;
+   return Vector(a/denom, b/denom, c/denom);
+#else
    return Vector(value.dot(v1), value.dot(v2), value.dot(v3));
+#endif
 }
 
 Ray::Ray(const Vector& po, const Vector& ve): point(po), vector(ve){}

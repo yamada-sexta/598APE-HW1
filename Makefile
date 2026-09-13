@@ -44,3 +44,10 @@ clean:
 
 -include $(CPU_MAIN:.o=.d) $(CPU_OBJECTS:.o=.d)
 
+
+.PHONY: nvidia cuda
+nvidia:
+	$(MAKE) -f Makefile.nvidia optix-deps
+	$(MAKE) -f Makefile.nvidia optix
+cuda:
+	$(MAKE) -f Makefile.nvidia all

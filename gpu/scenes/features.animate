@@ -1,0 +1,4 @@
+linear object 1 yaw 0 1
+linear object 3 yaw .3 .8
+linear object 4 pitch .2 .8
+linear camera 0 x 0 .3

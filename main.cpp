@@ -14,6 +14,11 @@
 #include <string.h>
 #include <iostream>
 #include <string>
+#include <signal.h>
+#ifdef USE_CUDA
+#include "gpu/renderer.h"
+#include <exception>
+#endif
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -140,6 +145,9 @@ static void renderBoundedRow(Autonoma* c, const ScreenBounds& screen, int y,
 }
 
 void refresh(Autonoma* c){
+#ifdef USE_CUDA
+   gpuRender(c, DATA, W, H);
+#else
    if (c->accelerationDirty) c->buildAcceleration();
    const size_t pixelCount = (size_t)H * (size_t)W;
    int workerCount = 1;
@@ -183,6 +191,13 @@ void refresh(Autonoma* c){
 #pragma omp parallel for schedule(dynamic, 16)
       for (long long n = 0; n < (long long)pixelCount; ++n) renderPixel(c, (size_t)n);
    }
+#endif
+}
+
+std::string shellQuote(const char* value) {
+   std::string result="\'";
+   for (const char* p=value; *p; ++p) result += *p=='\'' ? "\'\\\'\'" : std::string(1,*p);
+   return result+"\'";
 }
 
 void outputPPM(FILE* f){
@@ -527,6 +542,9 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                exit(1);
             }
          } else if (streq(object_type, "object")) {
+#ifdef USE_CUDA
+            gpuSceneChanged();
+#endif
             ShapeNode* node = MAIN_DATA->listStart;
             for (int i=0; i<obj_num; i++) {
                if (node == MAIN_DATA->listEnd) {
@@ -538,8 +556,10 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                node = node->next;
             }
             Shape* shape = node->data;
+#ifndef USE_CUDA
             double oldMin[3], oldMax[3];
             const bool wasBounded = shape->getBounds(oldMin, oldMax);
+#endif
 
             if (streq(field_type, "yaw")) {
                shape->setYaw(result);
@@ -563,6 +583,7 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                printf("Unknown shape field_type %s, expected one of yaw, pitch, roll, textureX, textureY, mapX, mapY, mapOffX, mapOffY\n", field_type);
                exit(1);
             }
+#ifndef USE_CUDA
             double newMin[3], newMax[3];
             const bool isBounded = shape->getBounds(newMin, newMax);
             bool boundsChanged = wasBounded != isBounded;
@@ -570,6 +591,7 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                for (int axis = 0; axis < 3; ++axis)
                   boundsChanged |= oldMin[axis] != newMin[axis] || oldMax[axis] != newMax[axis];
             MAIN_DATA->accelerationDirty |= boundsChanged;
+#endif
          } else {
             printf("Unknown object_type %s, expected one of camera, object\n", field_type);
             exit(1);
@@ -590,6 +612,11 @@ int main(int argc, const char** argv){
    bool toMovie = true;
    bool png = true;
    bool noOutput = false;
+#ifdef USE_CUDA
+   bool nvenc = true;
+#else
+   bool nvenc = false;
+#endif
    for (int i=1; i<argc; i++) {
       if (streq(argv[i], "-H")) {
          if (i + 1 >= argc) {
@@ -639,6 +666,8 @@ int main(int argc, const char** argv){
          i++;
          continue;
       }
+      if (streq(argv[i], "--cpu-encode")) { nvenc = false; continue; }
+      if (streq(argv[i], "--nvenc")) { nvenc = true; continue; }
       if (streq(argv[i], "--no-output")) {
          noOutput = true; toMovie = false; continue;
       }
@@ -659,7 +688,7 @@ int main(int argc, const char** argv){
          continue;
       }
       if (streq(argv[i], "--help")) {
-         printf("Usage %s [-H <height>] [-W <width>] [-F <framecount>] [--movie] [--no-movie] [--png] [--ppm] [--no-output] [-a <animationfile>] [--help] [-o <outfile>] [-i <infile>]\n", argv[0]);
+         printf("Usage %s [-H <height>] [-W <width>] [-F <framecount>] [--movie] [--no-movie] [--png] [--ppm] [--no-output] [--nvenc|--cpu-encode] [-a <animationfile>] [--help] [-o <outfile>] [-i <infile>]\n", argv[0]);
          return 0;
       }
       printf("Unknown option %s, look at %s --help\n", argv[i], argv[0]);
@@ -684,12 +713,26 @@ int main(int argc, const char** argv){
    free(DATA);
    DATA = (unsigned char*)malloc((size_t)W*H*3);
    if (!DATA) { fprintf(stderr, "Image allocation failed\n"); return 1; }
+#ifdef USE_CUDA
+   try {
+#endif
    Autonoma* MAIN_DATA = createInputs(inFile);
+#ifndef USE_CUDA
    MAIN_DATA->buildAcceleration();
+#endif
 
    
    int frame;
    char command[2000];
+   FILE* video = nullptr;
+   if (frameLen > 1 && toMovie && !noOutput && nvenc) {
+      if (W%2 || H%2) { fprintf(stderr,"NVENC yuv420p requires even dimensions\n"); return 1; }
+      std::string encoder = "ffmpeg -hide_banner -loglevel error -y -f image2pipe -vcodec ppm -framerate 24 -i - -c:v h264_nvenc -preset p4 -cq 18 -pix_fmt yuv420p " + shellQuote(outFile);
+      signal(SIGPIPE, SIG_IGN);
+      video = popen(encoder.c_str(), "w");
+      if (!video) { perror("ffmpeg"); return 1; }
+   }
+   
    struct timespec start, end;
    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
    for(frame = 0; frame<frameLen; frame++) {
@@ -701,7 +744,10 @@ int main(int argc, const char** argv){
       } else {
          snprintf(command, sizeof(command), "%s.tmp.%07d.ppm", outFile, frame);
       }
-      if (noOutput) {
+      if (video) {
+         outputPPM(video);
+         if (ferror(video)) { pclose(video); fprintf(stderr,"NVENC encoder failed\n"); return 1; }
+      } else if (noOutput) {
       } else if (png) {
          output(command); 
       } else {
@@ -710,11 +756,15 @@ int main(int argc, const char** argv){
       printf("Done Frame %7d|\n", frame);
    }
 
+   if (video && pclose(video) != 0) { fprintf(stderr,"NVENC encoder failed\n"); return 1; }
    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
    printf("Total time to create images=%0.9f seconds\n", tdiff(&start, &end));
 
 
-   if (frameLen > 1 && toMovie && !noOutput) {
+#ifdef USE_CUDA
+   gpuShutdown();
+#endif
+   if (frameLen > 1 && toMovie && !noOutput && !nvenc) {
       if (png) {
          snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %.400s.tmp.%%07d.png -vcodec ffv1 %.400s.tmp.avi && ffmpeg -y -i %.400s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %.400s", outFile, outFile, outFile, outFile);
       } else {
@@ -723,4 +773,10 @@ int main(int argc, const char** argv){
       return system(command);
    }   
    return 0;
+#ifdef USE_CUDA
+   } catch (const std::exception& error) {
+      fprintf(stderr, "GPU rendering failed: %s\n", error.what());
+      gpuShutdown(); return 1;
+   }
+#endif
 }

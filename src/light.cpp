@@ -35,7 +35,7 @@ Autonoma::Autonoma(const Camera& c): camera(c), useBVH4(false), bvh4MaxDepth(0){
    listEnd = NULL;
    lightStart = NULL;
    lightEnd = NULL;
-#ifdef RAY_REFERENCE_SHADING
+#if defined(USE_CUDA) || defined(RAY_REFERENCE_SHADING)
    depth = 10;
 #else
    depth = 3;
@@ -48,7 +48,7 @@ Autonoma::Autonoma(const Camera& c, Texture* tex): camera(c), useBVH4(false), bv
    listEnd = NULL;
    lightStart = NULL;
    lightEnd = NULL;
-#ifdef RAY_REFERENCE_SHADING
+#if defined(USE_CUDA) || defined(RAY_REFERENCE_SHADING)
    depth = 10;
 #else
    depth = 3;
