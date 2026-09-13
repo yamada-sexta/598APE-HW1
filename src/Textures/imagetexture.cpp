@@ -1,4 +1,7 @@
 #include "imagetexture.h"
+#ifdef USE_DIRECT_IMAGE_IO
+#include "../../gpu/image_loader.h"
+#endif
 #include <cstdlib>
 
 void ImageTexture::invalidateRenderCache(){
@@ -321,6 +324,9 @@ void ImageTexture::readPPM(FILE* f, const char* file){
 
 }
 ImageTexture::ImageTexture(const char* file):Texture(.3, 1., 0.){
+#ifdef USE_DIRECT_IMAGE_IO
+   if(loadGpuImage(*this,file))return;
+#endif
    const char* ext = findExtension(file);
    if(extensionEquals(ext, "ppm")){
    

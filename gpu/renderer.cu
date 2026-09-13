@@ -1,3 +1,4 @@
+#include "fsr.cuh"
 #include "renderer.h"
 #ifdef ENABLE_OPTIX
 #include "optix_backend.h"
@@ -8,6 +9,7 @@
 #include "../src/sphere.h"
 #include "../src/triangle.h"
 #include "trace.cuh"
+#include "warmup.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -16,9 +18,12 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #undef inf
 namespace {
+float renderScale = 1.f, fsrSharpness = .2f;
+const char *fsrMode = "off";
 void check(cudaError_t e, const char *where) {
   if (e != cudaSuccess)
     throw std::runtime_error(std::string(where) + ": " + cudaGetErrorString(e));
@@ -70,7 +75,9 @@ struct Renderer {
   Buffer<Lamp> lights;
   Buffer<Node> nodes;
   Buffer<int> indices, planes;
-  Buffer<unsigned char> pixels;
+  Buffer<unsigned char> pixels, upscaled;
+  Buffer<float4> easuPixels;
+  cudaEvent_t upscaleStop;
   std::vector<Primitive> hostPrimitives, previous;
   std::vector<Material> hostMaterials;
   std::vector<uchar4> hostTexels;
@@ -91,10 +98,20 @@ struct Renderer {
     if (backend == "optix")
       throw std::runtime_error("This binary has no OptiX support; build raytracer-optix");
 #endif
+    auto initStart = std::chrono::steady_clock::now();
     CUDA(cudaFree(nullptr));
-    CUDA(cudaDeviceSetLimit(cudaLimitStackSize, 16384));
+    auto contextReady = std::chrono::steady_clock::now();
+    if ((getenv("GPU_ITERATIVE") && atoi(getenv("GPU_ITERATIVE")) == 0) ||
+        getenv("GPU_LEGACY_STACK"))
+      CUDA(cudaDeviceSetLimit(cudaLimitStackSize, 16384));
+    auto stackReady = std::chrono::steady_clock::now();
+    if (getenv("GPU_PROFILE_SETUP"))
+      fprintf(stderr, "setup context_ms=%.3f stack_ms=%.3f\n",
+              std::chrono::duration<double, std::milli>(contextReady - initStart).count(),
+              std::chrono::duration<double, std::milli>(stackReady - contextReady).count());
     CUDA(cudaEventCreate(&start));
     CUDA(cudaEventCreate(&stop));
+    CUDA(cudaEventCreate(&upscaleStop));
     cudaDeviceProp p;
     CUDA(cudaGetDeviceProperties(&p, 0));
     fprintf(stderr, "CUDA device: %s (%d SMs)\n", p.name, p.multiProcessorCount);
@@ -104,6 +121,7 @@ struct Renderer {
       cudaHostUnregister(registeredHost);
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
+    cudaEventDestroy(upscaleStop);
   }
   int material(Texture *t) {
     if (!t)
@@ -120,10 +138,10 @@ struct Renderer {
       m.offset = int(hostTexels.size());
       m.w = image->w;
       m.h = image->h;
-      for (size_t i = 0; i < size_t(m.w) * m.h; ++i) {
-        unsigned char *p = image->imageData + 4 * i;
-        hostTexels.push_back(make_uchar4(p[0], p[1], p[2], p[3]));
-      }
+      size_t count = size_t(m.w) * m.h;
+      hostTexels.resize(hostTexels.size() + count);
+      static_assert(sizeof(uchar4) == 4, "Packed RGBA8 required");
+      memcpy(hostTexels.data() + m.offset, image->imageData, count * 4);
     } else if (auto *c = dynamic_cast<ColorTexture *>(t))
       m.color = V(c->r, c->g, c->b);
     else
@@ -235,6 +253,19 @@ struct Renderer {
     owner = s;
     if (!dirty)
       return cachedScene;
+    if (hostMaterials.empty()) {
+      std::unordered_set<Texture *> textures;
+      textures.insert(s->skybox);
+      for (auto *n = s->listStart; n; n = n->next) {
+        textures.insert(n->data->texture);
+        textures.insert(n->data->normalMap);
+      }
+      size_t texelsNeeded = 0;
+      for (auto *t : textures)
+        if (auto *image = dynamic_cast<ImageTexture *>(t))
+          texelsNeeded += size_t(image->w) * image->h;
+      hostTexels.reserve(texelsNeeded);
+    }
     size_t oldMaterials = hostMaterials.size();
     skyId = material(s->skybox);
     hostPrimitives.clear();
@@ -330,11 +361,35 @@ __global__ void renderKernel(Scene scene, CameraGPU cam, unsigned char *rgb, flo
   rgb[i + 2] = (unsigned char)c.z;
 }
 } 
+void gpuConfigureFsr(const char *mode, float sharpnessStops) {
+  if (renderer)
+    throw std::runtime_error("Configure FSR before rendering");
+  std::string name(mode);
+  if (name == "off")
+    renderScale = 1.f;
+  else if (name == "ultra-quality")
+    renderScale = 1.f / 1.3f;
+  else if (name == "quality")
+    renderScale = 1.f / 1.5f;
+  else if (name == "balanced")
+    renderScale = 1.f / 1.7f;
+  else if (name == "performance")
+    renderScale = .5f;
+  else
+    throw std::runtime_error(
+        "FSR mode must be off, ultra-quality, quality, balanced, or performance");
+  if (!std::isfinite(sharpnessStops) || sharpnessStops < 0 || sharpnessStops > 2)
+    throw std::runtime_error("FSR sharpness must be 0 to 2 stops (0 strongest)");
+  fsrMode = mode;
+  fsrSharpness = sharpnessStops;
+}
 void gpuRender(Autonoma *s, unsigned char *rgb, int width, int height) {
   auto frameStart = std::chrono::steady_clock::now();
+  gpuWaitWarmup();
   if (!renderer)
     renderer = new Renderer;
   auto &r = *renderer;
+  auto initDone = std::chrono::steady_clock::now();
   size_t bytes = size_t(width) * height * 3;
   if (!getenv("GPU_PAGEABLE") && (r.registeredHost != rgb || r.registeredBytes != bytes)) {
     if (r.registeredHost)
@@ -345,14 +400,23 @@ void gpuRender(Autonoma *s, unsigned char *rgb, int width, int height) {
     r.registeredHost = rgb;
     r.registeredBytes = bytes;
   }
+  auto pinDone = std::chrono::steady_clock::now();
   Scene scene = r.prepare(s);
-  r.pixels.reserve(size_t(width) * height * 3);
-  CameraGPU cam{cv(s->camera.focus),
-                cv(s->camera.forward),
-                cv(s->camera.right),
-                cv(s->camera.up),
-                width,
-                height};
+  auto prepareDone = std::chrono::steady_clock::now();
+  int rw = std::max(1, int(std::ceil(width * renderScale))),
+      rh = std::max(1, int(std::ceil(height * renderScale)));
+  bool upscale = rw != width || rh != height;
+  r.pixels.reserve(size_t(rw) * rh * 3);
+  if (upscale) {
+    r.upscaled.reserve(bytes);
+    r.easuPixels.reserve(size_t(width) * height);
+  }
+  auto buffersDone = std::chrono::steady_clock::now();
+  CameraGPU cam{
+      cv(s->camera.focus), cv(s->camera.forward), cv(s->camera.right), cv(s->camera.up), rw, rh};
+  if (upscale)
+    cam.forward =
+        cam.forward + cam.right * (.5f / rw - .5f / width) + cam.up * (.5f / height - .5f / rh);
   int bx = getenv("GPU_BLOCK_X") ? atoi(getenv("GPU_BLOCK_X")) : (scene.count >= 64 ? 8 : 32);
   int by = getenv("GPU_BLOCK_Y") ? atoi(getenv("GPU_BLOCK_Y")) : (scene.count >= 64 ? 8 : 4);
   if (bx <= 0 || by <= 0 || bx * by > 1024)
@@ -362,7 +426,7 @@ void gpuRender(Autonoma *s, unsigned char *rgb, int width, int height) {
   if (!std::isfinite(cutoff) || cutoff < 0 || cutoff > .01f)
     throw std::runtime_error("GPU_CUTOFF must be between 0 and 0.01");
   dim3 block(bx, by);
-  dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+  dim3 grid((rw + block.x - 1) / block.x, (rh + block.y - 1) / block.y);
 #ifdef ENABLE_OPTIX
   if (r.useOptix)
     rtRender(scene, cam, r.pixels.ptr, cutoff, r.start, r.stop);
@@ -377,15 +441,45 @@ void gpuRender(Autonoma *s, unsigned char *rgb, int width, int height) {
     CUDA(cudaGetLastError());
     CUDA(cudaEventRecord(r.stop));
   }
-  CUDA(cudaEventSynchronize(r.stop));
-  float ms;
+  auto submitDone = std::chrono::steady_clock::now();
+  unsigned char *result = r.pixels.ptr;
+  if (upscale) {
+    dim3 tile(16, 16), tiles((width + 15) / 16, (height + 15) / 16);
+    fsr::easuKernel<<<tiles, tile>>>(r.pixels.ptr, r.easuPixels.ptr, rw, rh, width, height);
+    CUDA(cudaGetLastError());
+    fsr::rcasKernel<<<tiles, tile>>>(r.easuPixels.ptr, r.upscaled.ptr, width, height,
+                                     std::exp2(-fsrSharpness));
+    CUDA(cudaGetLastError());
+    result = r.upscaled.ptr;
+  }
+  if (upscale)
+    CUDA(cudaEventRecord(r.upscaleStop));
+  CUDA(cudaEventSynchronize(upscale ? r.upscaleStop : r.stop));
+  float ms, upscaleMs = 0;
   CUDA(cudaEventElapsedTime(&ms, r.start, r.stop));
-  CUDA(cudaMemcpy(rgb, r.pixels.ptr, size_t(width) * height * 3, cudaMemcpyDeviceToHost));
+  if (upscale)
+    CUDA(cudaEventElapsedTime(&upscaleMs, r.stop, r.upscaleStop));
+  CUDA(cudaMemcpy(rgb, result, size_t(width) * height * 3, cudaMemcpyDeviceToHost));
+  if (r.frame == 0 && getenv("GPU_PROFILE_SETUP")) {
+    auto elapsed = [](auto a, auto b) {
+      return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    fprintf(stderr,
+            "setup constructor_ms=%.3f pin_ms=%.3f prepare_ms=%.3f buffers_ms=%.3f submit_ms=%.3f "
+            "finish_ms=%.3f\n",
+            elapsed(frameStart, initDone), elapsed(initDone, pinDone),
+            elapsed(pinDone, prepareDone), elapsed(prepareDone, buffersDone),
+            elapsed(buffersDone, submitDone),
+            elapsed(submitDone, std::chrono::steady_clock::now()));
+  }
   double frameMs =
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart)
           .count();
-  fprintf(stderr, "GPU frame=%d kernel_ms=%.6f frame_ms=%.6f primitives=%d bvh_nodes=%d mode=%s\n",
-          r.frame++, ms, frameMs, scene.count, scene.nodeCount,
+  fprintf(stderr,
+          "GPU frame=%d kernel_ms=%.6f frame_ms=%.6f upscale_ms=%.6f gpu_total_ms=%.6f "
+          "internal=%dx%d fsr=%s primitives=%d bvh_nodes=%d mode=%s\n",
+          r.frame++, ms, frameMs, upscale ? upscaleMs : 0.f, ms + (upscale ? upscaleMs : 0.f), rw,
+          rh, fsrMode, scene.count, scene.nodeCount,
           r.useOptix    ? "optix"
           : scene.brute ? "brute"
                         : "bvh");

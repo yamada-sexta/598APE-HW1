@@ -612,6 +612,8 @@ int main(int argc, const char** argv){
    bool toMovie = true;
    bool png = true;
    bool noOutput = false;
+   const char* fsrMode="off";
+   float fsrSharpness=.2f;
 #ifdef USE_CUDA
    bool nvenc = true;
 #else
@@ -666,6 +668,16 @@ int main(int argc, const char** argv){
          i++;
          continue;
       }
+      if (streq(argv[i], "--fsr")) {
+         if(++i>=argc){fprintf(stderr,"--fsr requires a mode\n");return 1;}
+         fsrMode=argv[i];continue;
+      }
+      if (streq(argv[i], "--fsr-sharpness")) {
+         if(++i>=argc){fprintf(stderr,"--fsr-sharpness requires stops in [0,2]\n");return 1;}
+         char* end=nullptr;fsrSharpness=strtof(argv[i],&end);
+         if(end==argv[i]||*end||!std::isfinite(fsrSharpness)||fsrSharpness<0||fsrSharpness>2){fprintf(stderr,"Invalid FSR sharpness\n");return 1;}
+         continue;
+      }
       if (streq(argv[i], "--cpu-encode")) { nvenc = false; continue; }
       if (streq(argv[i], "--nvenc")) { nvenc = true; continue; }
       if (streq(argv[i], "--no-output")) {
@@ -688,7 +700,7 @@ int main(int argc, const char** argv){
          continue;
       }
       if (streq(argv[i], "--help")) {
-         printf("Usage %s [-H <height>] [-W <width>] [-F <framecount>] [--movie] [--no-movie] [--png] [--ppm] [--no-output] [--nvenc|--cpu-encode] [-a <animationfile>] [--help] [-o <outfile>] [-i <infile>]\n", argv[0]);
+         printf("Usage %s [-H <height>] [-W <width>] [-F <framecount>] [--movie] [--no-movie] [--png] [--ppm] [--no-output] [--fsr <mode>] [--fsr-sharpness <stops>] [--nvenc|--cpu-encode] [-a <animationfile>] [--help] [-o <outfile>] [-i <infile>]\n", argv[0]);
          return 0;
       }
       printf("Unknown option %s, look at %s --help\n", argv[i], argv[0]);
@@ -715,6 +727,10 @@ int main(int argc, const char** argv){
    if (!DATA) { fprintf(stderr, "Image allocation failed\n"); return 1; }
 #ifdef USE_CUDA
    try {
+      gpuConfigureFsr(fsrMode,fsrSharpness);
+      gpuStartWarmup();
+#else
+   if (!streq(fsrMode,"off")) { fprintf(stderr,"FSR requires a GPU build\n"); return 1; }
 #endif
    Autonoma* MAIN_DATA = createInputs(inFile);
 #ifndef USE_CUDA
