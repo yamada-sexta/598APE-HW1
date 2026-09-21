@@ -527,7 +527,6 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                exit(1);
             }
          } else if (streq(object_type, "object")) {
-            MAIN_DATA->accelerationDirty = true;
             ShapeNode* node = MAIN_DATA->listStart;
             for (int i=0; i<obj_num; i++) {
                if (node == MAIN_DATA->listEnd) {
@@ -539,6 +538,8 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                node = node->next;
             }
             Shape* shape = node->data;
+            double oldMin[3], oldMax[3];
+            const bool wasBounded = shape->getBounds(oldMin, oldMax);
 
             if (streq(field_type, "yaw")) {
                shape->setYaw(result);
@@ -562,6 +563,13 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                printf("Unknown shape field_type %s, expected one of yaw, pitch, roll, textureX, textureY, mapX, mapY, mapOffX, mapOffY\n", field_type);
                exit(1);
             }
+            double newMin[3], newMax[3];
+            const bool isBounded = shape->getBounds(newMin, newMax);
+            bool boundsChanged = wasBounded != isBounded;
+            if (wasBounded && isBounded)
+               for (int axis = 0; axis < 3; ++axis)
+                  boundsChanged |= oldMin[axis] != newMin[axis] || oldMax[axis] != newMax[axis];
+            MAIN_DATA->accelerationDirty |= boundsChanged;
          } else {
             printf("Unknown object_type %s, expected one of camera, object\n", field_type);
             exit(1);
