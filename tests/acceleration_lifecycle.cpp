@@ -11,11 +11,17 @@ static void require(bool condition, const char* message) {
    }
 }
 
+struct CountingTexture : ColorTexture {
+   int preparations = 0;
+   CountingTexture() : ColorTexture(180, 120, 90, 1., 0., 1.) {}
+   void prepareRendering() override { ++preparations; }
+};
+
 int main() {
    W = 101; H = 97;
    std::vector<unsigned char> actual((size_t)W * H * 3), expected(actual.size());
    DATA = actual.data();
-   ColorTexture material(180, 120, 90, 1., 0., 1.);
+   CountingTexture material;
    Autonoma scene(Camera(Vector(0, 0, 0)));
    Sphere sphere(Vector(0, 0, 4), &material, 0, 0, 0, .5);
    scene.buildAcceleration();
@@ -34,6 +40,19 @@ int main() {
    scene.addShape(&sphere);
    refresh(&scene);
    require(actual == withSphere, "re-adding a shape must restore the image");
+   char mappingAnimation[] = "/tmp/ray-mapping-animation-XXXXXX";
+   const int mappingFd = mkstemp(mappingAnimation);
+   require(mappingFd >= 0, "could not create mapping animation fixture");
+   FILE* mappingFile = fdopen(mappingFd, "w");
+   require(mappingFile != NULL, "could not open mapping animation fixture");
+   std::fputs("linear object 0 mapOffX 0 1\nlinear object 0 yaw 0 .4\n", mappingFile);
+   std::fclose(mappingFile);
+   const int beforeMapping = material.preparations;
+   setFrame(mappingAnimation, &scene, 1, 1);
+   unlink(mappingAnimation);
+   require(material.preparations == beforeMapping,
+           "mapping-only animation must reuse acceleration and texture caches");
+   require(actual == withSphere, "uniform sphere mapping must preserve the image");
    scene.removeShape(scene.listStart);
 
    Box panel(Vector(0, 0, 4), &material, 0, 0, 0, .5, 1.);
