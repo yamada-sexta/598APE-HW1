@@ -1,48 +1,46 @@
-FUNC := g++
-copt := -c 
-OBJ_DIR := ./bin/
-NATIVE ?= 0
-OPENMP ?= 1
-EXACT_TRIG ?= 0
-OPT ?= 3
-FAST_MATH ?= 0
-ARCH_FLAGS :=
-THREAD_FLAGS :=
-QUALITY_FLAGS :=
-ifeq ($(NATIVE),1)
-ARCH_FLAGS += -march=native
-endif
-ifeq ($(OPENMP),1)
-THREAD_FLAGS += -fopenmp
-endif
-ifeq ($(EXACT_TRIG),1)
-QUALITY_FLAGS += -DRAY_EXACT_TRIG
-endif
-ifeq ($(FAST_MATH),1)
-QUALITY_FLAGS += -ffast-math
-endif
-FLAGS := -O$(OPT) -flto -DNDEBUG $(ARCH_FLAGS) $(THREAD_FLAGS) $(QUALITY_FLAGS) -lm -g -Werror
+.DEFAULT_GOAL := all
+include mk/cpu-config.mk
 
-CPP_FILES := $(wildcard src/*.cpp)
-OBJ_FILES := $(addprefix $(OBJ_DIR),$(notdir $(CPP_FILES:.cpp=.obj)))
+CPU_BUILD ?= build/cpu
+CPU_OUTPUT ?= main.exe
+CPU_SOURCES := $(wildcard src/*.cpp src/Textures/*.cpp)
+CPU_OBJECTS := $(patsubst %.cpp,$(CPU_BUILD)/%.o,$(CPU_SOURCES))
+CPU_MAIN := $(CPU_BUILD)/main.o
+CPU_CONFIG := $(CPU_BUILD)/build-config.txt
+CPU_TEST_NAMES := bvh4 screen_bounds texture_tiles acceleration_lifecycle transparent_shadow
+CPU_TESTS := $(addprefix $(CPU_BUILD)/tests/,$(CPU_TEST_NAMES))
+cpu_quote = '$(subst ','"'"',$(1))'
 
-TEXTURE_CPP_FILES := $(wildcard src/Textures/*.cpp)
-TEXTURE_OBJ_FILES := $(addprefix $(OBJ_DIR)Textures/,$(notdir $(TEXTURE_CPP_FILES:.cpp=.obj)))
+.PHONY: all cpu-build cpu-objects cpu-textures clean check-cpu FORCE
+all cpu-build: $(CPU_OUTPUT)
+cpu-objects: $(CPU_OBJECTS)
+cpu-textures: $(filter $(CPU_BUILD)/src/Textures/%,$(CPU_OBJECTS))
+FORCE:
 
-all:
-	cd ./src && $(MAKE)
-	$(FUNC) ./main.cpp -o ./main.exe ./src/*.obj ./src/Textures/*.obj $(FLAGS)
+$(CPU_CONFIG): FORCE
+	@mkdir -p $(dir $@)
+	@printf '%s\n' $(call cpu_quote,CXX=$(CXX)) $(call cpu_quote,$(shell $(CXX) --version | head -1)) $(call cpu_quote,COMPILE=$(CPU_COMPILE_FLAGS)) $(call cpu_quote,LINK=$(CPU_LINK_FLAGS) $(LDLIBS)) > $@.tmp
+	@cmp -s $@.tmp $@ || mv $@.tmp $@
+	@rm -f $@.tmp
+
+$(CPU_BUILD)/%.o: %.cpp $(CPU_CONFIG) Makefile mk/cpu-config.mk
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPU_COMPILE_FLAGS) -MMD -MP -c $< -o $@
+
+$(CPU_OUTPUT): $(CPU_MAIN) $(CPU_OBJECTS) $(CPU_CONFIG)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPU_MAIN) $(CPU_OBJECTS) $(CPU_LINK_FLAGS) $(LDLIBS) -lm -o $@
+
+$(CPU_BUILD)/tests/%: tests/%.cpp $(CPU_OBJECTS) $(CPU_CONFIG) main.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPU_COMPILE_FLAGS) -I. $< $(CPU_OBJECTS) $(CPU_LINK_FLAGS) $(LDLIBS) -lm -o $@
+
+check-cpu: $(CPU_TESTS)
+	@set -e; for test in $(CPU_TESTS); do OMP_NUM_THREADS=4 $$test; done
 
 clean:
-	cd ./src && $(MAKE) clean
-	rm -f ./*.exe
-	rm -f ./*.obj
+	rm -f $(CPU_OUTPUT) $(CPU_MAIN) $(CPU_OBJECTS) $(CPU_MAIN:.o=.d) $(CPU_OBJECTS:.o=.d) $(CPU_CONFIG) $(CPU_TESTS)
+	rm -f src/*.obj src/*.d src/Textures/*.obj src/Textures/*.d
 
+-include $(CPU_MAIN:.o=.d) $(CPU_OBJECTS:.o=.d)
 
-.PHONY: check-cpu
-check-cpu: all
-	mkdir -p build/cpu-tests
-	@set -e; for test in $(wildcard tests/*.cpp); do \
-		$(FUNC) $(FLAGS) -I. $$test ./src/*.obj ./src/Textures/*.obj -o build/cpu-tests/$$(basename $$test .cpp); \
-		OMP_NUM_THREADS=4 build/cpu-tests/$$(basename $$test .cpp); \
-	done
