@@ -35,7 +35,11 @@ Autonoma::Autonoma(const Camera& c): camera(c), useBVH4(false), bvh4MaxDepth(0){
    listEnd = NULL;
    lightStart = NULL;
    lightEnd = NULL;
+#ifdef RAY_REFERENCE_SHADING
+   depth = 10;
+#else
    depth = 3;
+#endif
    skybox = BLACK;
 }
 
@@ -44,11 +48,16 @@ Autonoma::Autonoma(const Camera& c, Texture* tex): camera(c), useBVH4(false), bv
    listEnd = NULL;
    lightStart = NULL;
    lightEnd = NULL;
+#ifdef RAY_REFERENCE_SHADING
+   depth = 10;
+#else
    depth = 3;
+#endif
    skybox = tex;
 }
 
 void Autonoma::addShape(Shape* r){
+   accelerationDirty = true;
    ShapeNode* hi = (ShapeNode*)malloc(sizeof(ShapeNode));
    hi->data = r;
    hi->next = hi->prev = NULL;
@@ -63,9 +72,10 @@ void Autonoma::addShape(Shape* r){
 }
 
 void Autonoma::removeShape(ShapeNode* s){
+   accelerationDirty = true;
    if(s==listStart){
       if(s==listEnd){
-         listStart = listStart = NULL;
+         listStart = listEnd = NULL;
       }
       else{
          listStart = s->next;
@@ -101,7 +111,7 @@ void Autonoma::addLight(Light* r){
 void Autonoma::removeLight(LightNode* s){
    if(s==lightStart){
       if(s==lightEnd){
-         lightStart = lightStart = NULL;
+         lightStart = lightEnd = NULL;
       }
       else{
          lightStart = s->next;
@@ -325,6 +335,7 @@ static void intersectsBVH4(const BVH4Node& node, const PreparedRay& ray,
 }
 
 void Autonoma::buildAcceleration() {
+   accelerationDirty = false;
    boundedShapes.clear();
    unboundedShapes.clear();
    bvhNodes.clear();
@@ -772,7 +783,12 @@ void getLight(double* tColor, Autonoma* aut, Vector point, Vector norm, unsigned
       lightColor[1] = t->data->color[1]/255.;
       lightColor[2] = t->data->color[2]/255.;
       Vector ra = t->data->center-point;
-      const bool hit = depth == 0 && aut->lightIntersection(Ray(point+ra*.01, ra), lightColor);
+#ifdef RAY_REFERENCE_SHADING
+      const bool traceShadow = true;
+#else
+      const bool traceShadow = depth == 0;
+#endif
+      const bool hit = traceShadow && aut->lightIntersection(Ray(point+ra*.01, ra), lightColor);
       double perc = norm.dot(ra) / ra.mag();
       if(!hit){
       if(flip && perc<0) perc=-perc;

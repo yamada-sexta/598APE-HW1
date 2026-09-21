@@ -2,6 +2,12 @@
 #define __SHAPE_H__
 #include "light.h"
 
+#ifdef RAY_REFERENCE_SHADING
+constexpr bool referenceShading = true;
+#else
+constexpr bool referenceShading = false;
+#endif
+
 class Shape{
   public:
    Shape(const Vector &c, Texture* t, double ya, double pi, double ro);

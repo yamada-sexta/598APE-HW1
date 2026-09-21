@@ -114,7 +114,7 @@ unsigned char Plane::reversible(){
    return 1; }
 
 Vector Plane::getNormal(Vector point, unsigned int depth){
-   if(normalMap==NULL || depth>0)
+   if(normalMap==NULL || (depth>0 && !referenceShading))
       return vect;
    else{
       Vector dist = solveScalers(right, up, vect, point-center);

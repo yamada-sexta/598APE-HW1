@@ -64,6 +64,7 @@ public:
    std::vector<BVHNode> bvhNodes;
    std::vector<BVH4Node> bvh4Nodes;
    std::vector<TrianglePacket> trianglePackets;
+   bool accelerationDirty = true;
    bool useBVH4;
    size_t bvh4MaxDepth;
    Autonoma(const Camera &c);

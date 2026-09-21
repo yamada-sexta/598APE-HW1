@@ -13,6 +13,7 @@
 #include<stdlib.h>
 #include <string.h>
 #include <iostream>
+#include <string>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -139,6 +140,7 @@ static void renderBoundedRow(Autonoma* c, const ScreenBounds& screen, int y,
 }
 
 void refresh(Autonoma* c){
+   if (c->accelerationDirty) c->buildAcceleration();
    const size_t pixelCount = (size_t)H * (size_t)W;
    int workerCount = 1;
 #ifdef _OPENMP
@@ -190,8 +192,9 @@ void outputPPM(FILE* f){
 
 void outputPPM(char* file){
    FILE* f = fopen(file, "wb");
+   if (!f) { perror(file); exit(1); }
    outputPPM(f);
-   fclose(f);
+   if (ferror(f) || fclose(f) != 0) { perror(file); exit(1); }
 }
 void output(char* file){
    char command[2000];
@@ -240,7 +243,7 @@ Texture* parseTexture(FILE* f, bool allowNull) {
    }
    if (streq(texture_type, "color")) {
       int r, g, b;
-      double opacity, reflection, ambient;
+      double opacity=1., reflection=0., ambient=.3;
       if (lscanf(f, "%d %d %d %lf %lf %lf\n", &r, &g, &b, &opacity, &reflection, &ambient) == EOF) {
          printf("Could not read <r> <g> <b> <opacity> <reflection> <ambient>\n");
          exit(1);
@@ -463,6 +466,7 @@ Autonoma* createInputs(const char* inputFile) {
       }
    }
 
+   if (f) fclose(f);
    return MAIN_DATA;
 }
 
@@ -488,6 +492,7 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
       double from;
       double to;
       FILE* f = fopen(animateFile, "r");
+      if (!f) { perror(animateFile); exit(1); }
       while (lscanf(f, "%s %s %d %s %lf %lf", transition_type, object_type, &obj_num, field_type, &from, &to) != EOF) {
          double (*func)(double, double, double);
          if (streq(transition_type, "linear")) {
@@ -522,6 +527,7 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
                exit(1);
             }
          } else if (streq(object_type, "object")) {
+            MAIN_DATA->accelerationDirty = true;
             ShapeNode* node = MAIN_DATA->listStart;
             for (int i=0; i<obj_num; i++) {
                if (node == MAIN_DATA->listEnd) {
@@ -561,6 +567,7 @@ void setFrame(const char* animateFile, Autonoma* MAIN_DATA, int frame, int frame
             exit(1);
          }
       }
+      fclose(f);
    }
 
    refresh(MAIN_DATA);
@@ -574,10 +581,11 @@ int main(int argc, const char** argv){
    const char* outFile = NULL;
    bool toMovie = true;
    bool png = true;
+   bool noOutput = false;
    for (int i=1; i<argc; i++) {
       if (streq(argv[i], "-H")) {
          if (i + 1 >= argc) {
-            printf("Error -H option must be followed by an integer height");
+            printf("Error -H option must be followed by an integer height\n"); return 1;
          }
          H = atoi(argv[i+1]);
          i++;
@@ -585,7 +593,7 @@ int main(int argc, const char** argv){
       }
       if (streq(argv[i], "-W")) {
          if (i + 1 >= argc) {
-            printf("Error -W option must be followed by an integer width");
+            printf("Error -W option must be followed by an integer width\n"); return 1;
          }
          W = atoi(argv[i+1]);
          i++;
@@ -593,7 +601,7 @@ int main(int argc, const char** argv){
       }
       if (streq(argv[i], "-F")) {
          if (i + 1 >= argc) {
-            printf("Error -F option must be followed by an integer number of frames");
+            printf("Error -F option must be followed by an integer number of frames\n"); return 1;
          }
          frameLen = atoi(argv[i+1]);
          i++;
@@ -601,7 +609,7 @@ int main(int argc, const char** argv){
       }
       if (streq(argv[i], "-o")) {
          if (i + 1 >= argc) {
-            printf("Error -o option must be followed by an output file path");
+            printf("Error -o option must be followed by an output file path\n"); return 1;
          }
          outFile = argv[i+1];
          i++;
@@ -609,7 +617,7 @@ int main(int argc, const char** argv){
       }
       if (streq(argv[i], "-i")) {
          if (i + 1 >= argc) {
-            printf("Error -i option must be followed by an input file path");
+            printf("Error -i option must be followed by an input file path\n"); return 1;
          }
          inFile = argv[i+1];
          i++;
@@ -617,11 +625,14 @@ int main(int argc, const char** argv){
       }
       if (streq(argv[i], "-a")) {
          if (i + 1 >= argc) {
-            printf("Error -a option must be followed by an animation input file path");
+            printf("Error -a option must be followed by an animation input file path\n"); return 1;
          }
          animateFile = argv[i+1];
          i++;
          continue;
+      }
+      if (streq(argv[i], "--no-output")) {
+         noOutput = true; toMovie = false; continue;
       }
       if (streq(argv[i], "--movie")) {
          toMovie = true;
@@ -640,7 +651,7 @@ int main(int argc, const char** argv){
          continue;
       }
       if (streq(argv[i], "--help")) {
-         printf("Usage %s [-H <height>] [-W <width>] [-F <framecount>] [--movie] [--no-movie] [--png] [--ppm] [--help] [-o <outfile>] [-i <infile>]\n", argv[0]);
+         printf("Usage %s [-H <height>] [-W <width>] [-F <framecount>] [--movie] [--no-movie] [--png] [--ppm] [--no-output] [-a <animationfile>] [--help] [-o <outfile>] [-i <infile>]\n", argv[0]);
          return 0;
       }
       printf("Unknown option %s, look at %s --help\n", argv[i], argv[0]);
@@ -659,22 +670,18 @@ int main(int argc, const char** argv){
       }
    }
 
-   if (W <= 0 || H <= 0) {
-      fprintf(stderr, "Image dimensions must be positive\n");
-      return 1;
+   if (W <= 0 || H <= 0 || frameLen <= 0 || (size_t)W*H > 100000000) {
+      fprintf(stderr, "Invalid dimensions or frame count\n"); return 1;
    }
-   DATA = (unsigned char*)malloc((size_t)W * (size_t)H * 3);
-   if (DATA == NULL) {
-      fprintf(stderr, "Could not allocate image buffer for %dx%d image\n", W, H);
-      return 1;
-   }
-
+   free(DATA);
+   DATA = (unsigned char*)malloc((size_t)W*H*3);
+   if (!DATA) { fprintf(stderr, "Image allocation failed\n"); return 1; }
    Autonoma* MAIN_DATA = createInputs(inFile);
    MAIN_DATA->buildAcceleration();
+
    
    int frame;
    char command[2000];
-   
    struct timespec start, end;
    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
    for(frame = 0; frame<frameLen; frame++) {
@@ -686,7 +693,8 @@ int main(int argc, const char** argv){
       } else {
          snprintf(command, sizeof(command), "%s.tmp.%07d.ppm", outFile, frame);
       }
-      if (png) {
+      if (noOutput) {
+      } else if (png) {
          output(command); 
       } else {
          outputPPM(command); 
@@ -697,14 +705,14 @@ int main(int argc, const char** argv){
    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
    printf("Total time to create images=%0.9f seconds\n", tdiff(&start, &end));
 
-   if (frameLen > 1 && toMovie) {
+
+   if (frameLen > 1 && toMovie && !noOutput) {
       if (png) {
          snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %.400s.tmp.%%07d.png -vcodec ffv1 %.400s.tmp.avi && ffmpeg -y -i %.400s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %.400s", outFile, outFile, outFile, outFile);
       } else {
-         snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %.400s.tmp.%%07d.ppm -vcodec ffv1 %.400s.tmp.avi && ffmpeg -y -i %.400s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %.400s", outFile, outFile, outFile, outFile);         
+         snprintf(command, sizeof(command), "ffmpeg -y -r 24 -i %.400s.tmp.%%07d.ppm -vcodec ffv1 %.400s.tmp.avi && ffmpeg -y -i %.400s.tmp.avi -c:v libx264 -preset veryslow -qp 0 -r 24 %.400s", outFile, outFile, outFile, outFile);
       }
       return system(command);
    }   
    return 0;
-   
 }
