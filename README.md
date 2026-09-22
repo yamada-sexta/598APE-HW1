@@ -6,7 +6,22 @@ In particular, this repository is an implementation of a Raytracer.
 
 To compile the program run:
 ```bash
-make -j
+make -j nvidia
+```
+  Run a 500×500 image:
+```
+  ./build/nvidia/raytracer-optix \
+    -i inputs/pianoroom.ray \
+    --png -W 500 -H 500 \
+    -o output/pianoroom.png
+```
+
+Render the elephant using RTX acceleration:
+```
+  GPU_BACKEND=optix ./build/nvidia/raytracer-optix \
+    -i inputs/realelephant.ray -a inputs/elephant.animate \
+    --png -W 1000 -H 1000 \
+    -o output/elephant.png
 ```
 
 To clean existing build artifacts run:
