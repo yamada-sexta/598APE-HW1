@@ -1,5 +1,7 @@
 # 598APE-HW1
 
+GPU code is on the GPU branch.
+
 This repository contains code for homework 1 of 598APE.
 
 In particular, this repository is an implementation of a Raytracer.
